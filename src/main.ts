@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { readContext } from './context.js'
 import { getFixSuggestion } from './llm.js'
 import { install, uninstall } from './shell.js'

@@ -3,9 +3,9 @@
 在 powershell 里敲错命令了？**fuck!!**
 
 ```powershell
-PS C:\Users\mark3> got branch  
-got: 我不认识这个命令  
-PS C:\Users\mark3> **fuck**  
+PS C:\Users\mark3> got branch
+got: 我不认识这个命令
+PS C:\Users\mark3> fuck
 → 建议执行：git branch
 ```
 
