@@ -1,9 +1,22 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
-function getProfilePath(): string {
-  return join(homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1')
+export function getProfilePath(): string {
+  try {
+    const output = execFileSync('powershell', [
+      '-NoProfile',
+      '-Command',
+      'Write-Output $PROFILE'
+    ], { encoding: 'utf-8', timeout: 10000 })
+    const path = output.trim()
+    if (!path) throw new Error('PowerShell returned empty $PROFILE path')
+    return path
+  } catch (err) {
+    throw new Error(
+      `无法获取 PowerShell $PROFILE 路径: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
 }
 
 /**
@@ -118,7 +131,7 @@ function fuck {
 export async function install(): Promise<void> {
   const profilePath = getProfilePath()
 
-  await mkdir(join(homedir(), 'Documents', 'PowerShell'), { recursive: true })
+  await mkdir(dirname(profilePath), { recursive: true })
 
   let content = ''
   try {

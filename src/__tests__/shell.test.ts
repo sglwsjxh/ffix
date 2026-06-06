@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-import { generateProfileScript } from '../shell.js'
+vi.mock('node:child_process')
+vi.mock('node:fs/promises')
+
+import { generateProfileScript, getProfilePath, install } from '../shell.js'
+import { execFileSync } from 'node:child_process'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
 describe('generateProfileScript()', () => {
   it('matches $Error[0] only for the current command via InvocationInfo.Line', () => {
@@ -15,5 +20,51 @@ describe('generateProfileScript()', () => {
     expect(script).toContain('$Host.InstanceId')
     expect(script).toContain(`Out-File -FilePath "${isolatedPath}"`)
     expect(script).toContain(`$ctxPath = "${isolatedPath}"`)
+  })
+})
+
+describe('getProfilePath()', () => {
+  const mockProfilePath = 'C:\\Users\\test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'
+
+  it('returns the path from $PROFILE via execFileSync', () => {
+    vi.mocked(execFileSync).mockReturnValueOnce(mockProfilePath + '\n')
+
+    const result = getProfilePath()
+    expect(result).toBe(mockProfilePath)
+    expect(execFileSync).toHaveBeenCalledWith('powershell', [
+      '-NoProfile', '-Command', 'Write-Output $PROFILE'
+    ], expect.objectContaining({ encoding: 'utf-8' }))
+  })
+
+  it('throws descriptive error when powershell fails', () => {
+    vi.mocked(execFileSync).mockImplementationOnce(() => { throw new Error('ENOENT') })
+
+    expect(() => getProfilePath()).toThrow(/无法获取 PowerShell \$PROFILE 路径/)
+  })
+
+  it('throws descriptive error when $PROFILE is empty', () => {
+    vi.mocked(execFileSync).mockReturnValueOnce('\n')
+
+    expect(() => getProfilePath()).toThrow(/无法获取 PowerShell \$PROFILE 路径/)
+  })
+})
+
+describe('install()', () => {
+  const mockProfilePath = 'C:\\Users\\test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'
+  const mockParentDir = 'C:\\Users\\test\\Documents\\PowerShell'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(execFileSync).mockReturnValue(mockProfilePath + '\n')
+    vi.mocked(readFile).mockRejectedValue(new Error('file not found'))
+    vi.mocked(writeFile).mockResolvedValue(undefined)
+    vi.mocked(mkdir).mockResolvedValue(undefined)
+  })
+
+  it('creates the parent directory of the resolved $PROFILE path', async () => {
+    await install()
+
+    expect(mkdir).toHaveBeenCalledWith(mockParentDir, { recursive: true })
+    expect(mkdir).toHaveBeenCalledTimes(1)
   })
 })
