@@ -3,6 +3,20 @@ import { getFixSuggestion } from './llm.js'
 import { install, uninstall } from './shell.js'
 import type { FixContext } from './types.js'
 
+const w = (s: string) => process.stderr.write(s)
+
+function keyPress(): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdin.setRawMode(true)
+    process.stdin.resume()
+    process.stdin.once('data', (data) => {
+      process.stdin.pause()
+      process.stdin.setRawMode(false)
+      resolve(data.toString())
+    })
+  })
+}
+
 interface CliArgs {
   subcommand?: 'install' | 'uninstall'
   cmd?: string
@@ -11,10 +25,11 @@ interface CliArgs {
   cwd?: string
   json: boolean
   quiet: boolean
+  confirm: boolean
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { json: false, quiet: false }
+  const args: CliArgs = { json: false, quiet: false, confirm: false }
 
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -41,6 +56,9 @@ function parseArgs(argv: string[]): CliArgs {
         break
       case '--quiet':
         args.quiet = true
+        break
+      case '--confirm':
+        args.confirm = true
         break
     }
   }
@@ -91,6 +109,25 @@ async function main(): Promise<void> {
   if (!suggestion || !suggestion.command) {
     console.error('没能找到修复方案')
     process.exit(1)
+  }
+
+  if (args.confirm) {
+    w(`上一条命令：${context.lastCommand}\n\n`)
+    w(`\x1b[32m✦  建议执行：${suggestion.command}\x1b[0m\n\n`)
+    w('Enter = 执行    Ctrl+C = 取消')
+
+    try {
+      const key = await keyPress()
+      if (key === '\r' || key === '\n') {
+        process.stderr.write(`\n\n\x1b[32m> ${suggestion.command}\x1b[0m\n`)
+        process.stdout.write(suggestion.command)
+        process.exit(0)
+      }
+      process.stderr.write('\n\n已取消\n')
+      process.exit(1)
+    } catch {
+      process.exit(1)
+    }
   }
 
   if (args.json) {

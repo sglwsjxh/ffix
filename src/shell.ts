@@ -31,16 +31,36 @@ $Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\fuck\\dist\\main.js"
 
 # 采集失败命令的上下文到临时文件
 function Write-FuckContext {
+    # Channel A: 会话历史（快速路径）
     $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue
+
+    # Channel B: PSReadLine 历史文件回退（解决 PS7 异步历史导致 Get-History 返回 null 的问题）
+    if (-not $lastCmd) {
+        $savedEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Stop'
+        try {
+            $historyPath = (Get-PSReadLineOption).HistorySavePath
+            $lines = Get-Content $historyPath -Tail 2 -ErrorAction SilentlyContinue
+            $lastCmd = $lines | Where-Object { $_ -and $_ -ne 'fuck' } | Select-Object -Last 1
+        } catch {
+            # PSReadLine 不可用时静默跳过
+        } finally {
+            $ErrorActionPreference = $savedEap
+        }
+    }
+
     if (-not $lastCmd) { return }
 
+    # 原生 EXE 失败 → $LASTEXITCODE 非零
+    # PowerShell 报错（command not found 等）→ $Error[0] 有内容
     $exitCode = $global:LASTEXITCODE
     $errorMsg = if ($Error[0]) { $Error[0].Exception.Message } else { '' }
 
-    if ($exitCode -ne 0) {
+    if ($exitCode -ne 0 -or $Error[0]) {
+        $effectiveExitCode = if ($exitCode -ne 0) { $exitCode } else { 1 }
         $ctx = @{
             lastCommand = $lastCmd
-            exitCode    = $exitCode
+            exitCode    = $effectiveExitCode
             errorOutput = $errorMsg
             cwd         = (Get-Location).Path
             shell       = 'powershell-7'
@@ -60,7 +80,7 @@ function prompt {
     & $Fuck_OriginalPrompt
 }
 
-# fuck 命令：读取上下文 → 调用 LLM → 展示建议 → 用户确认执行
+# fuck 命令：读取上下文 → 调用 CLI（带确认）→ 捕获 stdout → iex 执行
 function fuck {
     $ctxPath = "$env:TEMP\\fuck_ctx.json"
     if (-not (Test-Path $ctxPath)) {
@@ -77,40 +97,13 @@ function fuck {
     # 读取后立即删除，避免被下一轮 prompt hook 覆盖
     Remove-Item $ctxPath -Force -ErrorAction SilentlyContinue
 
-    # 检查 CLI 入口是否存在
-    if (-not (Test-Path $Fuck_NodeCli)) {
-        Write-Host "找不到 CLI 入口：$Fuck_NodeCli"
-        Write-Host "请执行 'npm i -g @sglwsjxh/fuck@latest' 重新安装"
-        return
+    $command = & node "$Fuck_NodeCli" --cmd "$($ctx.lastCommand)" --exit-code $ctx.exitCode --error-output "$($ctx.errorOutput)" --cwd "$($ctx.cwd)" --confirm
+
+    if (-not [string]::IsNullOrWhiteSpace($command)) {
+        iex "$command"
     }
 
-    # 调用 Node CLI 获取修复建议
-    $result = & node "$Fuck_NodeCli" --cmd "$($ctx.lastCommand)" --exit-code $ctx.exitCode --error-output "$($ctx.errorOutput)" --cwd "$($ctx.cwd)" --json
-    $rawJson = $result | Out-String
-    $suggestion = $rawJson | ConvertFrom-Json
-
-    if (-not $suggestion.command) {
-        Write-Host "没能找到修复方案"
-        return
-    }
-
-    Write-Host "✦ 上一条命令：$($ctx.lastCommand)"
-    Write-Host ""
-    Write-Host "建议执行：$($suggestion.command)"
-    Write-Host ""
-    Write-Host "Enter = 执行    Ctrl+C = 取消"
-
-    try {
-        $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        if ($key.VirtualKeyCode -eq 13) {
-            Invoke-Expression $suggestion.command
-            [Console]::ResetColor()
-        } else {
-            Write-Host "已取消"
-        }
-    } catch {
-        Write-Host "已取消"
-    }
+    [Console]::ResetColor()
 }
 
 # <<< fuck init <<<`

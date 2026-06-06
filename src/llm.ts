@@ -1,7 +1,7 @@
 import type { FixContext, FixSuggestion } from './types.js'
 import { loadUserConfig, loadAppConfig } from './config.js'
 
-const SYSTEM_PROMPT = `你是一个 PowerShell 7 命令修复助手，分析失败命令并给出修复命令`
+const SYSTEM_PROMPT = `你是一个 PowerShell 7 命令修复助手，分析失败命令并给出修复命令
 
 严格要求：
 1. 只返回 JSON，不要多余文字
