@@ -68,7 +68,7 @@ function Write-FuckContext {
             os          = 'win32'
             timestamp   = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffZ')
         }
-        $ctx | ConvertTo-Json -Compress | Out-File -FilePath "$env:TEMP\\fuck_ctx.json" -Encoding utf8
+        $ctx | ConvertTo-Json -Compress | Out-File -FilePath "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json" -Encoding utf8
     }
 }
 
@@ -83,7 +83,7 @@ function prompt {
 
 # fuck 命令：读取上下文 → 调用 CLI（带确认）→ 捕获 stdout → iex 执行
 function fuck {
-    $ctxPath = "$env:TEMP\\fuck_ctx.json"
+    $ctxPath = "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json"
     if (-not (Test-Path $ctxPath)) {
         Write-Host "没有找到上一条命令的上下文"
         return
