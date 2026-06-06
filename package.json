@@ -9,10 +9,10 @@
   },
   "scripts": {
     "dev": "tsx src/main.ts",
-    "build": "tsup src/main.ts --clean --minify --format esm",
+    "build": "tsup src/main.ts --clean --format esm",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepublish": "npm run build"
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "*",
