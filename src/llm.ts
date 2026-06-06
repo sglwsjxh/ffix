@@ -1,6 +1,8 @@
 import type { FixContext, FixSuggestion } from './types.js'
 import { loadUserConfig, loadAppConfig } from './config.js'
 
+type Confidence = NonNullable<FixSuggestion['confidence']>
+
 const SYSTEM_PROMPT = `你是一个 PowerShell 7 命令修复助手，分析失败命令并给出修复命令
 
 严格要求：
@@ -20,6 +22,45 @@ function buildUserPrompt(context: FixContext): string {
 当前目录：${context.cwd}
 操作系统：${context.os}
 Shell：${context.shell}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readMessageContent(json: unknown): string | null {
+  if (!isRecord(json)) {
+    console.error('[llm] Invalid response: JSON body is not an object')
+    return null
+  }
+
+  if (!Array.isArray(json.choices) || json.choices.length === 0) {
+    console.error('[llm] Invalid response: choices is missing or empty')
+    return null
+  }
+
+  const firstChoice = json.choices[0]
+  if (!isRecord(firstChoice) || !isRecord(firstChoice.message)) {
+    console.error('[llm] Invalid response: choices[0].message is missing')
+    return null
+  }
+
+  const content = firstChoice.message.content
+  if (typeof content !== 'string') {
+    console.error('[llm] Invalid response: choices[0].message.content is not a string')
+    return null
+  }
+
+  if (content.trim().length === 0) {
+    console.error('[llm] Invalid response: choices[0].message.content is empty')
+    return null
+  }
+
+  return content
+}
+
+function isConfidence(value: string): value is Confidence {
+  return value === 'high' || value === 'medium' || value === 'low'
 }
 
 export async function getFixSuggestion(context: FixContext): Promise<FixSuggestion | null> {
@@ -65,15 +106,20 @@ export async function getFixSuggestion(context: FixContext): Promise<FixSuggesti
       return null
     }
 
-    const json = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-
-    const content = json?.choices?.[0]?.message?.content
-    if (!content) {
-      console.error('[llm] No content in response')
+    let json: unknown
+    try {
+      json = await response.json()
+    } catch (err) {
+      console.error('[llm] Failed to parse API response as JSON:', err)
       return null
     }
 
-    let parsed: Record<string, unknown>
+    const content = readMessageContent(json)
+    if (content === null) {
+      return null
+    }
+
+    let parsed: unknown
     try {
       parsed = JSON.parse(content)
     } catch {
@@ -81,19 +127,35 @@ export async function getFixSuggestion(context: FixContext): Promise<FixSuggesti
       return null
     }
 
-    const cmd = (parsed.command ?? parsed.recommended_command ?? '') as string
-    if (!cmd) {
+    if (!isRecord(parsed)) {
+      console.error('[llm] Invalid LLM response: parsed content is not an object')
       return null
     }
 
-    const confidence = String(parsed.confidence ?? '') as FixSuggestion['confidence']
-    if (confidence && !['high', 'medium', 'low'].includes(confidence)) {
+    const cmd = parsed.command ?? parsed.recommended_command
+    if (typeof cmd !== 'string') {
+      console.error('[llm] Invalid LLM response: command is not a string')
+      return null
+    }
+
+    if (!cmd) {
+      console.error('[llm] Invalid LLM response: command is empty')
+      return null
+    }
+
+    const confidence = parsed.confidence
+    if (confidence === undefined || confidence === null || confidence === '') {
+      return { command: cmd }
+    }
+
+    if (typeof confidence !== 'string' || !isConfidence(confidence)) {
+      console.error('[llm] Invalid LLM response: confidence is not high, medium, or low')
       return { command: cmd }
     }
 
     return {
       command: cmd,
-      ...(confidence ? { confidence } : {}),
+      confidence,
     }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
