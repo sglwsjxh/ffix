@@ -10,14 +10,15 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "build": "tsup src/main.ts --clean --minify --format esm",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublish": "npm run build"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "*",
+    "@types/node": "*",
     "tsup": "*",
     "tsx": "*",
-    "@types/node": "*"
+    "typescript": "*",
+    "vitest": "^4.1.8"
   }
 }

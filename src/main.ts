@@ -8,15 +8,42 @@ import type { FixContext } from './types.js'
 
 const w = (s: string) => process.stderr.write(s)
 
-function keyPress(): Promise<string> {
-  return new Promise((resolve) => {
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.once('data', (data) => {
-      process.stdin.pause()
-      process.stdin.setRawMode(false)
-      resolve(data.toString())
-    })
+export function keyPress(): Promise<string> {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
+    process.stderr.write('当前终端不是交互式终端，无法确认执行\n')
+    return Promise.resolve('')
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+
+      process.stdin.once('data', (data) => {
+        try {
+          process.stdin.setRawMode(false)
+          process.stdin.pause()
+        } catch {
+          // Best effort cleanup
+        }
+
+        const key = data.toString()
+        if (key === '\x03') {
+          process.stderr.write('\n已取消\n')
+          process.exit(130)
+        }
+
+        resolve(key)
+      })
+    } catch (err) {
+      try {
+        process.stdin.setRawMode(false)
+        process.stdin.pause()
+      } catch {
+        // Best effort cleanup
+      }
+      reject(err)
+    }
   })
 }
 
