@@ -1,6 +1,8 @@
 {
   "name": "@sglwsjxh/ffix",
   "version": "1.0.1",
+  "license": "MIT",
+  "repository": "https://github.com/sglwsjxh/ffix.git",
   "type": "module",
   "bin": {
     "fuck": "./dist/main.js"
