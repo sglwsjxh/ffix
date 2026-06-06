@@ -31,33 +31,34 @@ $Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\fuck\\dist\\main.js"
 
 # 采集失败命令的上下文到临时文件
 function Write-FuckContext {
+    # 函数开头立刻保存关键状态，避免后续命令覆盖
+    $lastSuccess = $?
+    $exitCode = $global:LASTEXITCODE
+
     # Channel A: 会话历史（快速路径）
     $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue
 
     # Channel B: PSReadLine 历史文件回退（解决 PS7 异步历史导致 Get-History 返回 null 的问题）
     if (-not $lastCmd) {
-        $savedEap = $ErrorActionPreference
-        $ErrorActionPreference = 'Stop'
         try {
-            $historyPath = (Get-PSReadLineOption).HistorySavePath
-            $lines = Get-Content $historyPath -Tail 2 -ErrorAction SilentlyContinue
-            $lastCmd = $lines | Where-Object { $_ -and $_ -ne 'fuck' } | Select-Object -Last 1
+            $option = Get-PSReadLineOption -ErrorAction Stop
+            $historyPath = $option.HistorySavePath
+            if ($historyPath -and (Test-Path $historyPath)) {
+                $lines = Get-Content $historyPath -Tail 20 -ErrorAction Stop
+                $lastCmd = $lines |
+                    Where-Object { $_ -and ($_ -notmatch '^\s*fuck(\s|$)') } |
+                    Select-Object -Last 1
+            }
         } catch {
             # PSReadLine 不可用时静默跳过
-        } finally {
-            $ErrorActionPreference = $savedEap
         }
     }
 
     if (-not $lastCmd) { return }
 
-    # 原生 EXE 失败 → $LASTEXITCODE 非零
-    # PowerShell 报错（command not found 等）→ $Error[0] 有内容
-    $exitCode = $global:LASTEXITCODE
-    $errorMsg = if ($Error[0]) { $Error[0].Exception.Message } else { '' }
-
-    if ($exitCode -ne 0 -or $Error[0]) {
+    if ($exitCode -ne 0 -or -not $lastSuccess) {
         $effectiveExitCode = if ($exitCode -ne 0) { $exitCode } else { 1 }
+        $errorMsg = if ($Error[0]) { $Error[0].Exception.Message } else { '' }
         $ctx = @{
             lastCommand = $lastCmd
             exitCode    = $effectiveExitCode

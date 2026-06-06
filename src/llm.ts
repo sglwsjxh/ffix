@@ -37,9 +37,8 @@ export async function getFixSuggestion(context: FixContext): Promise<FixSuggesti
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: buildUserPrompt(context) },
       ],
-      temperature: 0.1,
-      max_tokens: 8192,
-      reasoning_effort: 'low',
+      temperature: 0.2,
+      max_tokens: 1024,
     })
 
     const controller = new AbortController()
