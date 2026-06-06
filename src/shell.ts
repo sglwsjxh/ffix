@@ -36,7 +36,7 @@ function Write-FuckContext {
     $exitCode = $global:LASTEXITCODE
 
     # Channel A: 会话历史（快速路径）
-    $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue
+    $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue | Where-Object { $_ -and ($_ -notmatch '^\s*fuck(\s|$)') }
 
     # Channel B: PSReadLine 历史文件回退（解决 PS7 异步历史导致 Get-History 返回 null 的问题）
     if (-not $lastCmd) {
