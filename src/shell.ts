@@ -56,7 +56,7 @@ function Write-FuckContext {
 
     if (-not $lastCmd) { return }
 
-    if ($exitCode -ne 0 -or -not $lastSuccess) {
+    if (-not $lastSuccess) {
         $effectiveExitCode = if ($exitCode -ne 0) { $exitCode } else { 1 }
         $errorMsg = if ($Error[0]) { $Error[0].Exception.Message } else { '' }
         $ctx = @{
