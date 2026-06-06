@@ -12,9 +12,6 @@ temp/
 *.tmp
 *.bak
 
-# config
-config/
-
 # logs
 logs/
 *.log

@@ -1,6 +1,7 @@
 import { readContext } from './context.js'
 import { getFixSuggestion } from './llm.js'
 import { install, uninstall } from './shell.js'
+import { ensureConfig } from './config.js'
 import type { FixContext } from './types.js'
 
 const w = (s: string) => process.stderr.write(s)
@@ -90,6 +91,8 @@ async function main(): Promise<void> {
     await uninstall()
     return
   }
+
+  await ensureConfig()
 
   let context: FixContext | null = null
 
