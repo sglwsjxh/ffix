@@ -106,3 +106,43 @@ describe('keyPress()', () => {
     }
   })
 })
+
+describe('main()', () => {
+  it('creates missing config and exits before reading context or calling LLM', async () => {
+    const origArgv = process.argv
+    const readFile = vi.fn().mockRejectedValue(new Error('config missing'))
+    const writeFile = vi.fn().mockResolvedValue(undefined)
+    const mkdir = vi.fn().mockResolvedValue(undefined)
+    const readContext = vi.fn().mockResolvedValue(null)
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'echo nope' })
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    try {
+      vi.resetModules()
+      vi.doMock('node:fs/promises', () => ({ readFile, writeFile, mkdir }))
+      vi.doMock('../context.js', () => ({ readContext }))
+      vi.doMock('../llm.js', () => ({ getFixSuggestion }))
+      vi.doMock('../shell.js', () => ({ install: vi.fn(), uninstall: vi.fn() }))
+      process.argv = ['node', 'ffix']
+
+      const mod = await import('../main.js')
+      await mod.main()
+
+      expect(readFile).toHaveBeenCalled()
+      expect(mkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true })
+      expect(writeFile).toHaveBeenCalled()
+      expect(process.exit).toHaveBeenCalledWith(0)
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('请编辑 config/config.json 配置文件后重新运行'))
+      expect(readContext).not.toHaveBeenCalled()
+      expect(getFixSuggestion).not.toHaveBeenCalled()
+    } finally {
+      process.argv = origArgv
+      consoleSpy.mockRestore()
+      vi.doUnmock('node:fs/promises')
+      vi.doUnmock('../context.js')
+      vi.doUnmock('../llm.js')
+      vi.doUnmock('../shell.js')
+      vi.resetModules()
+    }
+  })
+})

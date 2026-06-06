@@ -109,7 +109,7 @@ function buildContextFromArgs(args: CliArgs): FixContext {
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
 
   if (args.subcommand === 'install') {
@@ -122,7 +122,12 @@ async function main(): Promise<void> {
     return
   }
 
-  await ensureConfig()
+  const configStatus = await ensureConfig()
+  if (configStatus === 'created') {
+    console.log('请编辑 config/config.json 配置文件后重新运行')
+    process.exit(0)
+    return
+  }
 
   let context: FixContext | null = null
 
