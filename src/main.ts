@@ -31,6 +31,7 @@ export function keyPress(): Promise<string> {
         if (key === '\x03') {
           process.stderr.write('\n已取消\n')
           process.exit(130)
+          return
         }
 
         resolve(key)
@@ -176,7 +177,9 @@ async function main(): Promise<void> {
   process.exit(0)
 }
 
-main().catch((err: unknown) => {
-  console.error(err)
-  process.exit(1)
-})
+if (!process.env.VITEST) {
+  main().catch((err: unknown) => {
+    console.error(err)
+    process.exit(1)
+  })
+}

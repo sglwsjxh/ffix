@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 
-let keyPress: (...args: any[]) => any
+let keyPress: () => Promise<string>
 
 beforeAll(async () => {
   vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
@@ -19,13 +19,13 @@ describe('keyPress()', () => {
 
     try {
       Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true })
-      ;(process.stdin as any).setRawMode = undefined
+      Object.defineProperty(process.stdin, 'setRawMode', { value: undefined, configurable: true })
 
       const result = await keyPress()
       expect(result).toBe('')
     } finally {
       Object.defineProperty(process.stdin, 'isTTY', { value: origIsTTY?.value, configurable: true })
-      ;(process.stdin as any).setRawMode = origSetRawMode
+      Object.defineProperty(process.stdin, 'setRawMode', { value: origSetRawMode, configurable: true })
     }
   })
 
@@ -38,7 +38,7 @@ describe('keyPress()', () => {
 
     try {
       Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
-      process.stdin.setRawMode = vi.fn()
+      Object.defineProperty(process.stdin, 'setRawMode', { value: vi.fn(), configurable: true })
       process.stdin.resume = vi.fn()
       process.stdin.pause = vi.fn()
       process.stdin.once = vi.fn((_event: string, handler: Function) => {
@@ -52,7 +52,7 @@ describe('keyPress()', () => {
       expect(process.stdin.setRawMode).toHaveBeenCalledWith(false)
     } finally {
       Object.defineProperty(process.stdin, 'isTTY', { value: origIsTTY?.value, configurable: true })
-      process.stdin.setRawMode = origSetRawMode
+      Object.defineProperty(process.stdin, 'setRawMode', { value: origSetRawMode, configurable: true })
       process.stdin.resume = origResume
       process.stdin.pause = origPause
       process.stdin.once = origOnce
@@ -69,7 +69,7 @@ describe('keyPress()', () => {
 
     try {
       Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
-      process.stdin.setRawMode = vi.fn()
+      Object.defineProperty(process.stdin, 'setRawMode', { value: vi.fn(), configurable: true })
       process.stdin.resume = vi.fn()
       process.stdin.pause = vi.fn()
       process.stdin.once = vi.fn((_event: string, handler: Function) => {
@@ -77,13 +77,14 @@ describe('keyPress()', () => {
         return process.stdin
       })
 
-      await keyPress()
+      void keyPress()
+      await new Promise((resolve) => setTimeout(resolve, 20))
       expect(process.exit).toHaveBeenCalledWith(130)
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('已取消'))
     } finally {
       stderrSpy.mockRestore()
       Object.defineProperty(process.stdin, 'isTTY', { value: origIsTTY?.value, configurable: true })
-      process.stdin.setRawMode = origSetRawMode
+      Object.defineProperty(process.stdin, 'setRawMode', { value: origSetRawMode, configurable: true })
       process.stdin.resume = origResume
       process.stdin.pause = origPause
       process.stdin.once = origOnce
@@ -96,12 +97,12 @@ describe('keyPress()', () => {
 
     try {
       Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
-      process.stdin.setRawMode = vi.fn(() => { throw new Error('raw mode failed') })
+      Object.defineProperty(process.stdin, 'setRawMode', { value: vi.fn(() => { throw new Error('raw mode failed') }), configurable: true })
 
       await expect(keyPress()).rejects.toThrow('raw mode failed')
     } finally {
       Object.defineProperty(process.stdin, 'isTTY', { value: origIsTTY?.value, configurable: true })
-      process.stdin.setRawMode = origSetRawMode
+      Object.defineProperty(process.stdin, 'setRawMode', { value: origSetRawMode, configurable: true })
     }
   })
 })
