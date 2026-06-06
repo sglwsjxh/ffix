@@ -5,7 +5,6 @@ export interface UserConfig {
 }
 
 export interface AppConfig {
-  stderrTailLines: number
   timeoutMs: number
   tempFilePath: string
 }

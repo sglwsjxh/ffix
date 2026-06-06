@@ -14,7 +14,6 @@ const DEFAULT_USER_CONFIG: UserConfig = {
 }
 
 const DEFAULT_APP_CONFIG: AppConfig = {
-  stderrTailLines: 20,
   timeoutMs: 15_000,
   tempFilePath: '%TEMP%\\fuck_ctx_<session>.json',
 }
