@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 
 import type { UserConfig, AppConfig } from './types.js'
 
-const CONFIG_DIR = join(homedir(), '.fuck')
+const CONFIG_DIR = join(homedir(), '.ffix')
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 
 const DEFAULT_USER_CONFIG: UserConfig = {

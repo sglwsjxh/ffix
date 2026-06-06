@@ -27,7 +27,7 @@ export function generateProfileScript(): string {
   return `# >>> fuck init >>>
 
 # CLI 入口路径（通过 npm root -g 动态获取，不写死路径）
-$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\fuck\\dist\\main.js"
+$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"
 
 # 采集失败命令的上下文到临时文件
 function Write-FuckContext {
