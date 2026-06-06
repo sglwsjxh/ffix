@@ -21,6 +21,13 @@ describe('generateProfileScript()', () => {
     expect(script).toContain(`Out-File -FilePath "${isolatedPath}"`)
     expect(script).toContain(`$ctxPath = "${isolatedPath}"`)
   })
+
+  it('uses provided cliPath instead of npm root -g fallback', () => {
+    const cliPath = '/path/to/dist/main.js'
+    const script = generateProfileScript(cliPath)
+    expect(script).toContain(`$Fuck_NodeCli = "${cliPath}"`)
+    expect(script).not.toContain('npm root -g')
+  })
 })
 
 describe('getProfilePath()', () => {

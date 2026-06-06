@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 export function getProfilePath(): string {
   try {
@@ -36,11 +37,15 @@ export async function detectPs7(): Promise<boolean> {
  * - prompt 函数重写（渲染前调用 Write-FuckContext）
  * - fuck 命令（读取上下文 → 调用 LLM → 展示建议 → 确认执行）
  */
-export function generateProfileScript(): string {
+export function generateProfileScript(cliPath?: string): string {
+  const nodeCliLine = cliPath
+    ? `$Fuck_NodeCli = "${cliPath}"`
+    : `$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"`
+
   return `# >>> fuck init >>>
 
-# CLI 入口路径（通过 npm root -g 动态获取，不写死路径）
-$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"
+# CLI 入口路径
+${nodeCliLine}
 
 # 采集失败命令的上下文到临时文件
 function Write-FuckContext {
@@ -146,7 +151,8 @@ export async function install(): Promise<void> {
 
   await writeFile(profilePath + '.bak', content, 'utf-8')
 
-  const script = generateProfileScript()
+  const cliPath = fileURLToPath(import.meta.url)
+  const script = generateProfileScript(cliPath)
   const separator = content ? '\n' : ''
   await writeFile(profilePath, content + separator + script, 'utf-8')
 
