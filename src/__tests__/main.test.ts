@@ -125,7 +125,13 @@ describe('parseArgs()', () => {
   it('returns defaults for empty args', async () => {
     const { parseArgs } = await import('../main.js')
     const result = parseArgs([])
-    expect(result).toEqual({ json: false, confirm: false })
+    expect(result).toEqual({ json: false, confirm: false, version: false })
+  })
+
+  it('parses --version', async () => {
+    const { parseArgs } = await import('../main.js')
+    expect(parseArgs(['--version'])).toMatchObject({ version: true })
+    expect(parseArgs(['-v'])).toMatchObject({ version: true })
   })
 
   it('parses install subcommand', async () => {
@@ -150,6 +156,7 @@ describe('parseArgs()', () => {
       cwd: '/tmp',
       json: true,
       confirm: true,
+      version: false,
     })
   })
 
@@ -161,6 +168,7 @@ describe('parseArgs()', () => {
       exitCode: 0,
       json: true,
       confirm: false,
+      version: false,
     })
   })
 
@@ -171,6 +179,7 @@ describe('parseArgs()', () => {
       contextFile: '/tmp/fuck_ctx.json',
       json: true,
       confirm: false,
+      version: false,
     })
   })
 
@@ -300,7 +309,7 @@ describe('main()', () => {
     const writeFile = vi.fn().mockResolvedValue(undefined)
     const mkdir = vi.fn().mockResolvedValue(undefined)
     const readContext = vi.fn().mockResolvedValue(null)
-    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'echo nope' })
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'echo nope', confidence: 'high' })
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     try {
@@ -429,7 +438,7 @@ describe('main()', () => {
     const ensureConfig = vi.fn().mockResolvedValue('ready')
     const readContext = vi.fn().mockResolvedValue(null)
     const readContextFromPath = vi.fn().mockResolvedValue(null)
-    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'git branch' })
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'git branch', confidence: 'high' })
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     try {
@@ -449,6 +458,46 @@ describe('main()', () => {
       expect(readContextFromPath).not.toHaveBeenCalled()
       expect(readContext).not.toHaveBeenCalled()
       expect(getFixSuggestion).not.toHaveBeenCalled()
+    } finally {
+      process.argv = origArgv
+      consoleSpy.mockRestore()
+      vi.doUnmock('../config.js')
+      vi.doUnmock('../context.js')
+      vi.doUnmock('../llm.js')
+      vi.doUnmock('../shell.js')
+      vi.resetModules()
+    }
+  })
+
+  it('returns 1 when getFixSuggestion returns low confidence', async () => {
+    const origArgv = process.argv
+    const ensureConfig = vi.fn().mockResolvedValue('ready')
+    const readContext = vi.fn().mockResolvedValue({
+      lastCommand: 'git brnch',
+      exitCode: 1,
+      errorOutput: 'git: brnch is not a git command',
+      cwd: '/repo',
+      shell: 'powershell-7' as const,
+      os: 'win32' as const,
+      timestamp: '2026-06-07T00:00:00.000Z',
+    })
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'git branch', confidence: 'low' })
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      vi.resetModules()
+      vi.doMock('../config.js', () => ({ ensureConfig }))
+      vi.doMock('../context.js', () => ({ readContext }))
+      vi.doMock('../llm.js', () => ({ getFixSuggestion }))
+      vi.doMock('../shell.js', () => ({ install: vi.fn(), uninstall: vi.fn() }))
+      process.argv = ['node', 'ffix']
+
+      const mod = await import('../main.js')
+      const exitCode = await mod.main()
+
+      expect(exitCode).toBe(1)
+      expect(getFixSuggestion).toHaveBeenCalledTimes(1)
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('没能找到修复方案'))
     } finally {
       process.argv = origArgv
       consoleSpy.mockRestore()

@@ -21,8 +21,11 @@ const zshContext: FixContext = {
   timestamp: '2026-06-07T00:00:00.000Z',
 }
 
-async function importLlmWithResponse(body: unknown) {
-  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }))
+async function mockAPI(body: unknown) {
+  const responseBody = JSON.stringify(body)
+  const fetchMock = vi.fn().mockImplementation(() =>
+    Promise.resolve(new Response(responseBody, { status: 200 })),
+  )
 
   vi.resetModules()
   vi.doMock('../config.js', () => ({
@@ -42,7 +45,7 @@ async function importLlmWithResponse(body: unknown) {
   return { getFixSuggestion: mod.getFixSuggestion, fetchMock }
 }
 
-function responseWithContent(content: unknown) {
+function makeRes(content: unknown) {
   return {
     choices: [
       {
@@ -69,8 +72,8 @@ afterEach(() => {
 })
 
 describe('getFixSuggestion()', () => {
-  it('returns parsed FixSuggestion for a valid response', async () => {
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+  it('returns parsed FixDecision for a valid response (high confidence)', async () => {
+    const { getFixSuggestion } = await mockAPI(makeRes(JSON.stringify({
       command: 'git branch',
       confidence: 'high',
     })))
@@ -81,9 +84,21 @@ describe('getFixSuggestion()', () => {
     })
   })
 
+  it('returns parsed FixDecision for a valid response (low confidence)', async () => {
+    const { getFixSuggestion } = await mockAPI(makeRes(JSON.stringify({
+      command: '',
+      confidence: 'low',
+    })))
+
+    await expect(getFixSuggestion(context)).resolves.toEqual({
+      command: '',
+      confidence: 'low',
+    })
+  })
+
   it('returns null when content is null', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(null))
+    const { getFixSuggestion } = await mockAPI(makeRes(null))
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('content is not a string'))
@@ -91,7 +106,7 @@ describe('getFixSuggestion()', () => {
 
   it('returns null when content is empty after trim', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent('   '))
+    const { getFixSuggestion } = await mockAPI(makeRes('   '))
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('content is empty'))
@@ -99,7 +114,7 @@ describe('getFixSuggestion()', () => {
 
   it('returns null when content is an object', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent({ not: 'a string' }))
+    const { getFixSuggestion } = await mockAPI(makeRes({ not: 'a string' }))
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('content is not a string'))
@@ -107,7 +122,7 @@ describe('getFixSuggestion()', () => {
 
   it('returns null when choices array is missing', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse({})
+    const { getFixSuggestion } = await mockAPI({})
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('choices is missing or empty'))
@@ -115,51 +130,88 @@ describe('getFixSuggestion()', () => {
 
   it('returns null when choices[0] has no message', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse({ choices: [{}] })
+    const { getFixSuggestion } = await mockAPI({ choices: [{}] })
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('choices[0].message is missing'))
   })
 
   it.each([
-    { command: 42 },
-    { command: { value: 'git branch' } },
+    { command: 42, confidence: 'high' },
+    { command: { value: 'git branch' }, confidence: 'high' },
   ])('returns null when command is not a string: %o', async (payload) => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify(payload)))
+    const { getFixSuggestion } = await mockAPI(makeRes(JSON.stringify(payload)))
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('command is not a string'))
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid FixDecision schema'),
+      expect.anything(),
+    )
   })
 
-  it('returns null when command is empty string', async () => {
+  it('returns null when confidence is invalid (medium)', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify({ command: '' })))
-
-    await expect(getFixSuggestion(context)).resolves.toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('command is empty'))
-  })
-
-  it('returns null when command exceeds 1000 characters', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify({
-      command: 'x'.repeat(1001),
-      confidence: 'low',
+    const { getFixSuggestion } = await mockAPI(makeRes(JSON.stringify({
+      command: 'git branch',
+      confidence: 'medium',
     })))
 
     await expect(getFixSuggestion(context)).resolves.toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('command is too long'))
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid FixDecision schema'),
+      expect.anything(),
+    )
   })
 
-  it('returns null when command contains markdown fences', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify({
-      command: '```\ngit branch\n```',
-      confidence: 'low',
-    })))
+  it('sends request with response_format: json_object', async () => {
+    const { getFixSuggestion, fetchMock } = await mockAPI(
+      makeRes(JSON.stringify({ command: 'git branch', confidence: 'high' })),
+    )
+    await getFixSuggestion(context)
 
-    await expect(getFixSuggestion(context)).resolves.toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('markdown fences'))
+    const callBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(callBody).toMatchObject({
+      response_format: { type: 'json_object' },
+      max_tokens: 512,
+    })
+  })
+
+  it('returns FixDecision when retry succeeds after initial schema failure', async () => {
+    const responseBodyInvalid = JSON.stringify(
+      makeRes(JSON.stringify({ command: 'git branch', confidence: 'medium' })),
+    )
+    const responseBodyValid = JSON.stringify(
+      makeRes(JSON.stringify({ command: 'git branch', confidence: 'high' })),
+    )
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(responseBodyInvalid, { status: 200 }))
+      .mockResolvedValueOnce(new Response(responseBodyValid, { status: 200 }))
+
+    vi.resetModules()
+    vi.doMock('../config.js', () => ({
+      loadUserConfig: vi.fn().mockResolvedValue({
+        baseUrl: 'https://api.example.com',
+        apiKey: 'sk-test',
+        model: 'gpt-test',
+      }),
+      appConfig: { timeoutMs: 1000, tempFilePath: '' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const mod = await import('../llm.js')
+
+    await expect(mod.getFixSuggestion(context)).resolves.toEqual({
+      command: 'git branch',
+      confidence: 'high',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    vi.doUnmock('../config.js')
+    vi.unstubAllGlobals()
+    vi.resetModules()
   })
 
   it('buildUserPrompt wraps untrusted fields in <user_input> tags', async () => {
@@ -224,7 +276,7 @@ describe('getFixSuggestion()', () => {
   })
 
   it('getFixSuggestion sends PowerShell-specific system prompt for PowerShell context', async () => {
-    const { getFixSuggestion, fetchMock } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+    const { getFixSuggestion, fetchMock } = await mockAPI(makeRes(JSON.stringify({
       command: 'git branch',
       confidence: 'high',
     })))
@@ -237,7 +289,7 @@ describe('getFixSuggestion()', () => {
   })
 
   it('getFixSuggestion sends zsh-specific system prompt for zsh context', async () => {
-    const { getFixSuggestion, fetchMock } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+    const { getFixSuggestion, fetchMock } = await mockAPI(makeRes(JSON.stringify({
       command: 'brew update',
       confidence: 'high',
     })))
@@ -251,7 +303,7 @@ describe('getFixSuggestion()', () => {
   })
 
   it('handles errorOutput with injection content gracefully', async () => {
-    const { getFixSuggestion } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+    const { getFixSuggestion } = await mockAPI(makeRes(JSON.stringify({
       command: 'git branch',
       confidence: 'high',
     })))

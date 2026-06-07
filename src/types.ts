@@ -19,7 +19,7 @@ export interface FixContext {
   timestamp: string
 }
 
-export interface FixSuggestion {
+export interface FixDecision {
   command: string
-  confidence?: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'low'
 }

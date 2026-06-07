@@ -1,4 +1,5 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -6,11 +7,25 @@ import { homedir } from 'node:os'
 
 export function getProfilePath(): string {
   try {
-    const output = execFileSync('powershell', [
-      '-NoProfile',
-      '-Command',
-      'Write-Output $PROFILE'
-    ], { encoding: 'utf-8', timeout: 10000 })
+    // Try pwsh (PowerShell 7) first, fall back to powershell (Windows PowerShell 5.1)
+    const psExe = process.platform === 'win32' ? 'pwsh.exe' : 'pwsh'
+    const fallbackExe = process.platform === 'win32' ? 'powershell.exe' : 'powershell'
+
+    let output: string
+    try {
+      output = execFileSync(psExe, [
+        '-NoProfile',
+        '-Command',
+        'Write-Output $PROFILE'
+      ], { encoding: 'utf-8', timeout: 10000 })
+    } catch {
+      output = execFileSync(fallbackExe, [
+        '-NoProfile',
+        '-Command',
+        'Write-Output $PROFILE'
+      ], { encoding: 'utf-8', timeout: 10000 })
+    }
+
     const path = output.trim()
     if (!path) throw new Error('PowerShell returned empty $PROFILE path')
     return path
@@ -26,49 +41,47 @@ export function getZshProfilePath(): string {
   return join(zdotdir || homedir(), '.zshrc')
 }
 
-function openingMarker(): string {
+function openTag(): string {
   return '# >>> fuck init >>>'
 }
 
-function closingMarker(): string {
+function closeTag(): string {
   return '# <<< fuck init <<<'
 }
 
-function zshOpeningMarker(): string {
+function zshOpenTag(): string {
   return '# >>> ffix init >>>'
 }
 
-function zshClosingMarker(): string {
+function zshCloseTag(): string {
   return '# <<< ffix init <<<'
 }
 
-function cliPathValue(cliPath?: string): string {
+function psPathVar(cliPath?: string): string {
   return cliPath
     ? `$Fuck_NodeCli = "${cliPath}"`
     : `$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"`
 }
 
-function zshCliPathValue(cliPath?: string): string {
+function zshPathVar(cliPath?: string): string {
   return cliPath
     ? `FFIX_NODE_CLI="${cliPath}"`
     : 'FFIX_NODE_CLI="$(npm root -g)/@sglwsjxh/ffix/dist/main.js"'
 }
 
-function cliPathSection(cliPath?: string): string {
-  return `# CLI 入口路径\n${cliPathValue(cliPath)}`
+function psPathBlock(cliPath?: string): string {
+  return `${psPathVar(cliPath)}`
 }
 
-function contextCaptureSection(): string {
-  return `# 采集失败命令的上下文到临时文件
-function Write-FuckContext {
-    # 函数开头立刻保存关键状态，避免后续命令覆盖
+function captureBlock(): string {
+  return `function Write-FuckContext {
     $lastSuccess = $?
     $exitCode = $global:LASTEXITCODE
 
-    # Channel A: 会话历史（快速路径）
+    # Channel A: 会话历史
     $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue | Where-Object { $_ -and ($_ -notmatch '^\\s*fuck(\\s|$)') }
 
-    # Channel B: PSReadLine 历史文件回退（解决 PS7 异步历史导致 Get-History 返回 null 的问题）
+    # Channel B: PSReadLine 历史文件回退
     if (-not $lastCmd) {
         try {
             $option = Get-PSReadLineOption -ErrorAction Stop
@@ -80,7 +93,6 @@ function Write-FuckContext {
                     Select-Object -Last 1
             }
         } catch {
-            # PSReadLine 不可用时静默跳过
         }
     }
 
@@ -103,20 +115,22 @@ function Write-FuckContext {
 }`
 }
 
-function promptOverrideSection(): string {
-  return `# 保存原始 prompt 函数，确保不破坏用户自定义的 prompt
-$Fuck_OriginalPrompt = \${function:prompt}
+function promptBlock(): string {
+  return `$Fuck_OriginalPrompt = \${function:prompt}
 
-# 重写 prompt 函数：在每次显示提示符前采集上下文，然后恢复原始行为
 function prompt {
     Write-FuckContext
     & $Fuck_OriginalPrompt
 }`
 }
 
-function fuckCommandSection(): string {
-  return `# fuck 命令：读取上下文 → 调用 CLI（带确认）→ 捕获 stdout → iex 执行
-function fuck {
+function fuckBlock(): string {
+  return `function fuck {
+    if ($args.Count -gt 0) {
+        & node "$Fuck_NodeCli" @args
+        return
+    }
+
     $ctxPath = "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json"
     if (-not (Test-Path $ctxPath)) {
         Write-Host "没有找到上一条命令的上下文"
@@ -133,17 +147,15 @@ function fuck {
 }`
 }
 
-function zshCliPathSection(cliPath?: string): string {
-  return `# CLI 入口路径
-${zshCliPathValue(cliPath)}`
+function zshPathBlock(cliPath?: string): string {
+  return `${zshPathVar(cliPath)}`
 }
 
-function zshContextPathSection(): string {
-  return `# 会话隔离的上下文文件路径（ffix_precmd 会把失败命令上下文写到这里）
-: \${FFIX_CTX_PATH:="\${TMPDIR:-/tmp}/ffix_ctx_$$.json"}`
+function zshCtxBlock(): string {
+  return `: \${FFIX_CTX_PATH:="\${TMPDIR:-/tmp}/ffix_ctx_$$.json"}`
 }
 
-function zshHooksSection(): string {
+function zshHookBlock(): string {
   return `ffix_preexec() {
     FFIX_LAST_CMD="$1"
 }
@@ -178,8 +190,13 @@ ffix_precmd() {
 autoload -Uz add-zsh-hook && add-zsh-hook preexec ffix_preexec && add-zsh-hook precmd ffix_precmd`
 }
 
-function zshFuckCommandSection(): string {
+function zshFuckBlock(): string {
   return `fuck() {
+    if [[ $# -gt 0 ]]; then
+        node "$FFIX_NODE_CLI" "$@"
+        return
+    fi
+
     local ctxPath="$FFIX_CTX_PATH"
     if [[ ! -f "$ctxPath" ]]; then
         echo "没有找到上一条命令的上下文"
@@ -195,43 +212,34 @@ function zshFuckCommandSection(): string {
 }`
 }
 
-/**
- * 生成要注入到 $PROFILE 的 PowerShell 脚本
- * 内容包含：
- * - 标记块 # >>> fuck init >>> / # <<< fuck init <<<
- * - $Fuck_NodeCli 变量（指向 CLI 入口路径）
- * - Write-FuckContext 函数（采集失败命令上下文）
- * - prompt 函数重写（渲染前调用 Write-FuckContext）
- * - fuck 命令（读取上下文 → 调用 LLM → 展示建议 → 确认执行）
- */
 export function generateProfileScript(cliPath?: string): string {
   return [
-    openingMarker(),
-    cliPathSection(cliPath),
-    contextCaptureSection(),
-    promptOverrideSection(),
-    fuckCommandSection(),
-    closingMarker(),
+    openTag(),
+    psPathBlock(cliPath),
+    captureBlock(),
+    promptBlock(),
+    fuckBlock(),
+    closeTag(),
   ].join('\n\n')
 }
 
 export function generateZshProfileScript(cliPath?: string): string {
   return [
-    zshOpeningMarker(),
-    zshCliPathSection(cliPath),
-    zshContextPathSection(),
-    zshHooksSection(),
-    zshFuckCommandSection(),
-    zshClosingMarker(),
+    zshOpenTag(),
+    zshPathBlock(cliPath),
+    zshCtxBlock(),
+    zshHookBlock(),
+    zshFuckBlock(),
+    zshCloseTag(),
   ].join('\n\n')
 }
 
-async function appendProfileBlock(
+async function appendBlock(
   profilePath: string,
   startTag: string,
   script: string,
-  alreadyInstalledMessage: string,
-  installedMessage: string,
+  installedMsg: string,
+  doneMsg: string,
 ): Promise<void> {
   await mkdir(dirname(profilePath), { recursive: true })
 
@@ -239,11 +247,10 @@ async function appendProfileBlock(
   try {
     content = await readFile(profilePath, 'utf-8')
   } catch (err) {
-    /* first install: profile may not exist yet, that's OK */
   }
 
   if (content.includes(startTag)) {
-    console.log(alreadyInstalledMessage)
+    console.log(installedMsg)
     return
   }
 
@@ -252,35 +259,35 @@ async function appendProfileBlock(
   const separator = content ? '\n' : ''
   await writeFile(profilePath, content + separator + script, 'utf-8')
 
-  console.log(installedMessage)
+  console.log(doneMsg)
 }
 
-async function removeProfileBlock(
+async function removeBlock(
   profilePath: string,
   startTag: string,
   endTag: string,
-  missingProfileMessage: string,
-  missingBlockMessage: string,
-  incompleteBlockMessage: string,
-  uninstalledMessage: string,
+  noProfileMsg: string,
+  noBlockMsg: string,
+  brokenBlockMsg: string,
+  doneMsg: string,
 ): Promise<void> {
   let content: string
   try {
     content = await readFile(profilePath, 'utf-8')
   } catch (err) {
-    console.log(missingProfileMessage)
+    console.log(noProfileMsg)
     return
   }
 
   const startIdx = content.indexOf(startTag)
   if (startIdx === -1) {
-    console.log(missingBlockMessage)
+    console.log(noBlockMsg)
     return
   }
 
   const endIdx = content.indexOf(endTag, startIdx)
   if (endIdx === -1) {
-    console.log(incompleteBlockMessage)
+    console.log(brokenBlockMsg)
     return
   }
 
@@ -293,29 +300,31 @@ async function removeProfileBlock(
       : after
 
   await writeFile(profilePath, before + trimmed, 'utf-8')
-  console.log(uninstalledMessage)
+  console.log(doneMsg)
 }
 
-/**
- * 将 fuck 注入到当前用户的 $PROFILE 中
- * 先备份原文件，再追加注入脚本
- * 如果已经注入过则跳过
- */
 export async function install(): Promise<void> {
   if (process.platform === 'darwin') {
     await installZsh()
   } else {
-    await installPowerShell()
+    await installPS()
   }
 }
 
-export async function installPowerShell(): Promise<void> {
+function resolveCliPath(): string {
+  const currentPath = fileURLToPath(import.meta.url)
+  const pkgDir = dirname(dirname(currentPath))
+  const distPath = join(pkgDir, 'dist', 'main.js')
+  return existsSync(distPath) ? distPath : currentPath
+}
+
+export async function installPS(): Promise<void> {
   const profilePath = getProfilePath()
-  const cliPath = fileURLToPath(import.meta.url)
+  const cliPath = resolveCliPath()
   const script = generateProfileScript(cliPath)
-  await appendProfileBlock(
+  await appendBlock(
     profilePath,
-    openingMarker(),
+    openTag(),
     script,
     'fuck 已经安装到 $PROFILE，跳过',
     `已安装到 ${profilePath}`,
@@ -324,35 +333,31 @@ export async function installPowerShell(): Promise<void> {
 
 export async function installZsh(): Promise<void> {
   const profilePath = getZshProfilePath()
-  const cliPath = fileURLToPath(import.meta.url)
+  const cliPath = resolveCliPath()
   const script = generateZshProfileScript(cliPath)
-  await appendProfileBlock(
+  await appendBlock(
     profilePath,
-    zshOpeningMarker(),
+    zshOpenTag(),
     script,
     'ffix 已经安装到 .zshrc，跳过',
     `已安装到 ${profilePath}`,
   )
 }
 
-/**
- * 从 $PROFILE 中卸载 fuck 注入内容
- * 只删除标记块之间的内容，不影响用户其他配置
- */
 export async function uninstall(): Promise<void> {
   if (process.platform === 'darwin') {
     await uninstallZsh()
   } else {
-    await uninstallPowerShell()
+    await uninstallPS()
   }
 }
 
-export async function uninstallPowerShell(): Promise<void> {
+export async function uninstallPS(): Promise<void> {
   const profilePath = getProfilePath()
 
   const startTag = '# >>> fuck init >>>'
   const endTag = '# <<< fuck init <<<'
-  await removeProfileBlock(
+  await removeBlock(
     profilePath,
     startTag,
     endTag,
@@ -365,10 +370,10 @@ export async function uninstallPowerShell(): Promise<void> {
 
 export async function uninstallZsh(): Promise<void> {
   const profilePath = getZshProfilePath()
-  await removeProfileBlock(
+  await removeBlock(
     profilePath,
-    zshOpeningMarker(),
-    zshClosingMarker(),
+    zshOpenTag(),
+    zshCloseTag(),
     '没有找到 .zshrc',
     '没有找到 ffix 注入内容',
     '错误：注入标记不完整，请手动检查 .zshrc',

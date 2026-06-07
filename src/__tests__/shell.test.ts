@@ -142,18 +142,33 @@ describe('generateZshProfileScript()', () => {
 describe('getProfilePath()', () => {
   const mockProfilePath = 'C:\\Users\\test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'
 
-  it('returns the path from $PROFILE via execFileSync', () => {
+  it('returns the path from $PROFILE via pwsh', () => {
     vi.mocked(execFileSync).mockReturnValueOnce(mockProfilePath + '\n')
 
     const result = getProfilePath()
     expect(result).toBe(mockProfilePath)
-    expect(execFileSync).toHaveBeenCalledWith('powershell', [
+    expect(execFileSync).toHaveBeenCalledWith('pwsh.exe', [
       '-NoProfile', '-Command', 'Write-Output $PROFILE'
     ], expect.objectContaining({ encoding: 'utf-8' }))
   })
 
-  it('throws descriptive error when powershell fails', () => {
-    vi.mocked(execFileSync).mockImplementationOnce(() => { throw new Error('ENOENT') })
+  it('falls back to powershell when pwsh is not available', () => {
+    vi.mocked(execFileSync)
+      .mockImplementationOnce(() => { throw new Error('ENOENT') })
+      .mockReturnValueOnce(mockProfilePath + '\n')
+
+    const result = getProfilePath()
+    expect(result).toBe(mockProfilePath)
+    expect(execFileSync).toHaveBeenNthCalledWith(1, 'pwsh.exe', [
+      '-NoProfile', '-Command', 'Write-Output $PROFILE'
+    ], expect.anything())
+    expect(execFileSync).toHaveBeenNthCalledWith(2, 'powershell.exe', [
+      '-NoProfile', '-Command', 'Write-Output $PROFILE'
+    ], expect.anything())
+  })
+
+  it('throws descriptive error when both pwsh and powershell fail', () => {
+    vi.mocked(execFileSync).mockImplementation(() => { throw new Error('ENOENT') })
 
     expect(() => getProfilePath()).toThrow(/无法获取 PowerShell \$PROFILE 路径/)
   })

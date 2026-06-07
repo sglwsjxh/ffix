@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs'
 import { readContext, readContextFromPath } from './context.js'
 import { getFixSuggestion } from './llm.js'
 import { install, uninstall } from './shell.js'
 import { ensureConfig } from './config.js'
 import type { FixContext } from './types.js'
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as { version: string }
+const VERSION = pkg.version
 
 const w = (s: string) => process.stderr.write(s)
 
@@ -24,7 +28,6 @@ export function keyPress(): Promise<string> {
           process.stdin.setRawMode(false)
           process.stdin.pause()
         } catch (err) {
-          // Best effort cleanup: stdin stream may already be closed
         }
 
         const key = data.toString()
@@ -40,8 +43,7 @@ export function keyPress(): Promise<string> {
       try {
         process.stdin.setRawMode(false)
         process.stdin.pause()
-      } catch (err2) {
-        // Best effort cleanup: stdin stream may already be closed
+      } catch (err) {
       }
       reject(err)
     }
@@ -57,10 +59,11 @@ interface CliArgs {
   contextFile?: string
   json: boolean
   confirm: boolean
+  version: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { json: false, confirm: false }
+  const args: CliArgs = { json: false, confirm: false, version: false }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -72,6 +75,11 @@ export function parseArgs(argv: string[]): CliArgs {
 
     if (arg === 'uninstall') {
       args.subcommand = 'uninstall'
+      continue
+    }
+
+    if (arg === '-v') {
+      args.version = true
       continue
     }
 
@@ -141,6 +149,11 @@ export function parseArgs(argv: string[]): CliArgs {
         continue
       }
 
+      if (arg === '--version' || arg === '-v') {
+        args.version = true
+        continue
+      }
+
       console.error(`error: unknown flag ${arg}`)
       throw new Error('parse error')
     }
@@ -149,14 +162,14 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error('parse error')
   }
 
-  const hasLegacyContextArgs = args.cmd !== undefined || args.exitCode !== undefined || args.errorOutput !== undefined || args.cwd !== undefined
+  const hasLegacy = args.cmd !== undefined || args.exitCode !== undefined || args.errorOutput !== undefined || args.cwd !== undefined
 
-  if (args.contextFile !== undefined && hasLegacyContextArgs) {
+  if (args.contextFile !== undefined && hasLegacy) {
     console.error('error: cannot combine --context-file with legacy context arguments (--cmd, --exit-code, --error-output, --cwd)')
     throw new Error('parse error')
   }
 
-  if (args.subcommand && (hasLegacyContextArgs || args.contextFile !== undefined)) {
+  if (args.subcommand && (hasLegacy || args.contextFile !== undefined)) {
     console.error('error: cannot combine install/uninstall with fix arguments (--context-file, --cmd, --exit-code, --error-output, --cwd)')
     throw new Error('parse error')
   }
@@ -164,7 +177,7 @@ export function parseArgs(argv: string[]): CliArgs {
   return args
 }
 
-function buildContextFromArgs(args: CliArgs): FixContext {
+function buildContext(args: CliArgs): FixContext {
   return {
     lastCommand: args.cmd!,
     exitCode: args.exitCode!,
@@ -177,11 +190,22 @@ function buildContextFromArgs(args: CliArgs): FixContext {
 }
 
 export async function main(): Promise<number> {
+  const rawArgs = process.argv.slice(2)
+  if (rawArgs.includes('--version') || rawArgs.includes('-v')) {
+    console.log(`fuck v${VERSION}`)
+    return 0
+  }
+
   let args: CliArgs
   try {
-    args = parseArgs(process.argv.slice(2))
-  } catch (parseErr) {
+    args = parseArgs(rawArgs)
+  } catch (err) {
     return 1
+  }
+
+  if (args.version) {
+    console.log(`fuck v${VERSION}`)
+    return 0
   }
 
   if (args.subcommand === 'install') {
@@ -205,7 +229,7 @@ export async function main(): Promise<number> {
   if (args.contextFile !== undefined) {
     context = await readContextFromPath(args.contextFile)
   } else if (args.cmd && args.exitCode !== undefined && !Number.isNaN(args.exitCode)) {
-    context = buildContextFromArgs(args)
+    context = buildContext(args)
   } else {
     context = await readContext()
   }
@@ -216,38 +240,38 @@ export async function main(): Promise<number> {
   }
 
   w(`上一条命令：${context.lastCommand}\n`)
-  const suggestion = await getFixSuggestion(context)
+  const decision = await getFixSuggestion(context)
 
-  if (!suggestion || !suggestion.command) {
+  if (!decision || !decision.command || decision.confidence === 'low') {
     console.error('没能找到修复方案')
     return 1
   }
 
   if (args.confirm) {
-    w(`\x1b[32m✦  建议执行：${suggestion.command}\x1b[0m\n\n`)
+    w(`\n\x1b[32m✦  建议执行：${decision.command}\x1b[0m\n\n`)
     w('Enter = 执行    Ctrl+C = 取消')
 
     try {
       const key = await keyPress()
       if (key === '\r' || key === '\n') {
-        process.stderr.write(`\n\n\x1b[32m> ${suggestion.command}\x1b[0m\n`)
-        process.stdout.write(suggestion.command)
+        process.stderr.write(`\n\n\x1b[32m> ${decision.command}\x1b[0m\n`)
+        process.stdout.write(decision.command)
         return 0
       }
       process.stderr.write('\n\n已取消\n')
       return 1
-    } catch (confirmErr) {
+    } catch (err) {
       return 1
     }
   }
 
   if (args.json) {
     console.log(JSON.stringify({
-      command: suggestion.command,
-      confidence: suggestion.confidence ?? 'medium',
+      command: decision.command,
+      confidence: decision.confidence,
     }))
   } else {
-    console.log(suggestion.command)
+    console.log(decision.command)
   }
 
   return 0

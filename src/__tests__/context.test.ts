@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { FixContext } from '../types.js'
 
-async function importContextWithFs(readFile: ReturnType<typeof vi.fn>, unlink: ReturnType<typeof vi.fn>) {
+async function mockFS(readFile: ReturnType<typeof vi.fn>, unlink: ReturnType<typeof vi.fn>) {
   vi.resetModules()
   vi.doMock('node:fs/promises', () => ({ readFile, unlink }))
 
@@ -28,7 +28,7 @@ describe('readContextFromPath()', () => {
     }
     const readFile = vi.fn().mockResolvedValue(JSON.stringify(ctx))
     const unlink = vi.fn().mockResolvedValue(undefined)
-    const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+    const { readContextFromPath } = await mockFS(readFile, unlink)
 
     await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toEqual(ctx)
     expect(readFile).toHaveBeenCalledWith('/tmp/fuck_ctx.json', 'utf-8')
@@ -37,7 +37,7 @@ describe('readContextFromPath()', () => {
   it('returns null for malformed JSON', async () => {
     const readFile = vi.fn().mockResolvedValue('{not valid json')
     const unlink = vi.fn().mockResolvedValue(undefined)
-    const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+    const { readContextFromPath } = await mockFS(readFile, unlink)
 
     await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toBeNull()
   })
@@ -45,7 +45,7 @@ describe('readContextFromPath()', () => {
   it('returns null for missing file', async () => {
     const readFile = vi.fn().mockRejectedValue({ code: 'ENOENT' })
     const unlink = vi.fn().mockResolvedValue(undefined)
-    const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+    const { readContextFromPath } = await mockFS(readFile, unlink)
 
     await expect(readContextFromPath('/tmp/missing_ctx.json')).resolves.toBeNull()
   })
@@ -61,7 +61,7 @@ describe('readContextFromPath()', () => {
       timestamp: '2026-06-07T00:00:00.000Z',
     }))
     const unlink = vi.fn().mockResolvedValue(undefined)
-    const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+    const { readContextFromPath } = await mockFS(readFile, unlink)
 
     await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toBeNull()
   })
@@ -91,7 +91,7 @@ describe('readContextFromPath()', () => {
     for (const ctx of invalidContexts) {
       const readFile = vi.fn().mockResolvedValue(JSON.stringify(ctx))
       const unlink = vi.fn().mockResolvedValue(undefined)
-      const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+      const { readContextFromPath } = await mockFS(readFile, unlink)
 
       await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toBeNull()
     }
@@ -108,7 +108,7 @@ describe('readContextFromPath()', () => {
       timestamp: '2026-06-07T00:00:00.000Z',
     }))
     const unlink = vi.fn().mockResolvedValue(undefined)
-    const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+    const { readContextFromPath } = await mockFS(readFile, unlink)
 
     await readContextFromPath('/tmp/fuck_ctx.json')
 
