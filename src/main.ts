@@ -55,12 +55,11 @@ interface CliArgs {
   errorOutput?: string
   cwd?: string
   json: boolean
-  quiet: boolean
   confirm: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { json: false, quiet: false, confirm: false }
+  const args: CliArgs = { json: false, confirm: false }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -123,11 +122,6 @@ export function parseArgs(argv: string[]): CliArgs {
 
       if (arg === '--json') {
         args.json = true
-        continue
-      }
-
-      if (arg === '--quiet') {
-        args.quiet = true
         continue
       }
 
@@ -223,8 +217,6 @@ export async function main(): Promise<void> {
       command: suggestion.command,
       confidence: suggestion.confidence ?? 'medium',
     }))
-  } else if (args.quiet) {
-    console.log(suggestion.command)
   } else {
     console.log(suggestion.command)
   }

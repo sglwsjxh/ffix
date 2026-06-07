@@ -20,33 +20,33 @@ export function getProfilePath(): string {
   }
 }
 
-/**
- * 生成要注入到 $PROFILE 的 PowerShell 脚本
- * 内容包含：
- * - 标记块 # >>> fuck init >>> / # <<< fuck init <<<
- * - $Fuck_NodeCli 变量（指向 CLI 入口路径）
- * - Write-FuckContext 函数（采集失败命令上下文）
- * - prompt 函数重写（渲染前调用 Write-FuckContext）
- * - fuck 命令（读取上下文 → 调用 LLM → 展示建议 → 确认执行）
- */
-export function generateProfileScript(cliPath?: string): string {
-  const nodeCliLine = cliPath
+function openingMarker(): string {
+  return '# >>> fuck init >>>'
+}
+
+function closingMarker(): string {
+  return '# <<< fuck init <<<'
+}
+
+function cliPathValue(cliPath?: string): string {
+  return cliPath
     ? `$Fuck_NodeCli = "${cliPath}"`
     : `$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"`
+}
 
-  return `# >>> fuck init >>>
+function cliPathSection(cliPath?: string): string {
+  return `# CLI 入口路径\n${cliPathValue(cliPath)}`
+}
 
-# CLI 入口路径
-${nodeCliLine}
-
-# 采集失败命令的上下文到临时文件
+function contextCaptureSection(): string {
+  return `# 采集失败命令的上下文到临时文件
 function Write-FuckContext {
     # 函数开头立刻保存关键状态，避免后续命令覆盖
     $lastSuccess = $?
     $exitCode = $global:LASTEXITCODE
 
     # Channel A: 会话历史（快速路径）
-    $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue | Where-Object { $_ -and ($_ -notmatch '^\s*fuck(\s|$)') }
+    $lastCmd = Get-History -Count 1 | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue | Where-Object { $_ -and ($_ -notmatch '^\\s*fuck(\\s|$)') }
 
     # Channel B: PSReadLine 历史文件回退（解决 PS7 异步历史导致 Get-History 返回 null 的问题）
     if (-not $lastCmd) {
@@ -56,7 +56,7 @@ function Write-FuckContext {
             if ($historyPath -and (Test-Path $historyPath)) {
                 $lines = Get-Content $historyPath -Tail 20 -ErrorAction Stop
                 $lastCmd = $lines |
-                    Where-Object { $_ -and ($_ -notmatch '^\s*fuck(\s|$)') } |
+                    Where-Object { $_ -and ($_ -notmatch '^\\s*fuck(\\s|$)') } |
                     Select-Object -Last 1
             }
         } catch {
@@ -80,18 +80,22 @@ function Write-FuckContext {
         }
         $ctx | ConvertTo-Json -Compress | Out-File -FilePath "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json" -Encoding utf8
     }
+}`
 }
 
-# 保存原始 prompt 函数，确保不破坏用户自定义的 prompt
+function promptOverrideSection(): string {
+  return `# 保存原始 prompt 函数，确保不破坏用户自定义的 prompt
 $Fuck_OriginalPrompt = \${function:prompt}
 
 # 重写 prompt 函数：在每次显示提示符前采集上下文，然后恢复原始行为
 function prompt {
     Write-FuckContext
     & $Fuck_OriginalPrompt
+}`
 }
 
-# fuck 命令：读取上下文 → 调用 CLI（带确认）→ 捕获 stdout → iex 执行
+function fuckCommandSection(): string {
+  return `# fuck 命令：读取上下文 → 调用 CLI（带确认）→ 捕获 stdout → iex 执行
 function fuck {
     $ctxPath = "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json"
     if (-not (Test-Path $ctxPath)) {
@@ -115,9 +119,27 @@ function fuck {
     }
 
     [Console]::ResetColor()
+}`
 }
 
-# <<< fuck init <<<`
+/**
+ * 生成要注入到 $PROFILE 的 PowerShell 脚本
+ * 内容包含：
+ * - 标记块 # >>> fuck init >>> / # <<< fuck init <<<
+ * - $Fuck_NodeCli 变量（指向 CLI 入口路径）
+ * - Write-FuckContext 函数（采集失败命令上下文）
+ * - prompt 函数重写（渲染前调用 Write-FuckContext）
+ * - fuck 命令（读取上下文 → 调用 LLM → 展示建议 → 确认执行）
+ */
+export function generateProfileScript(cliPath?: string): string {
+  return [
+    openingMarker(),
+    cliPathSection(cliPath),
+    contextCaptureSection(),
+    promptOverrideSection(),
+    fuckCommandSection(),
+    closingMarker(),
+  ].join('\n\n')
 }
 
 /**

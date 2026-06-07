@@ -8,7 +8,6 @@ type CliArgs = {
   errorOutput?: string
   cwd?: string
   json: boolean
-  quiet: boolean
   confirm: boolean
 }
 
@@ -125,7 +124,7 @@ describe('parseArgs()', () => {
   it('returns defaults for empty args', async () => {
     const { parseArgs } = await import('../main.js')
     const result = parseArgs([])
-    expect(result).toEqual({ json: false, quiet: false, confirm: false })
+    expect(result).toEqual({ json: false, confirm: false })
   })
 
   it('parses install subcommand', async () => {
@@ -142,14 +141,13 @@ describe('parseArgs()', () => {
 
   it('parses full flag combination', async () => {
     const { parseArgs } = await import('../main.js')
-    const result = parseArgs(['--cmd', 'git branch', '--exit-code', '1', '--error-output', 'error msg', '--cwd', '/tmp', '--json', '--quiet', '--confirm'])
+    const result = parseArgs(['--cmd', 'git branch', '--exit-code', '1', '--error-output', 'error msg', '--cwd', '/tmp', '--json', '--confirm'])
     expect(result).toEqual({
       cmd: 'git branch',
       exitCode: 1,
       errorOutput: 'error msg',
       cwd: '/tmp',
       json: true,
-      quiet: true,
       confirm: true,
     })
   })
@@ -161,7 +159,6 @@ describe('parseArgs()', () => {
       cmd: 'npm test',
       exitCode: 0,
       json: true,
-      quiet: false,
       confirm: false,
     })
   })
