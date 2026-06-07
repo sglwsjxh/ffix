@@ -207,4 +207,27 @@ describe('uninstall()', () => {
     expect(readFile).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh\\.zshrc', 'utf-8')
     expect(writeFile).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh\\.zshrc', 'before\nafter', 'utf-8')
   })
+
+  it('removes the zsh marker block while preserving surrounding .zshrc content', async () => {
+    mockPlatform('darwin')
+    vi.stubEnv('ZDOTDIR', 'C:\\Users\\test\\.config\\zsh')
+    vi.mocked(readFile).mockResolvedValueOnce([
+      'export PATH="$HOME/bin:$PATH"',
+      '# >>> ffix init >>>',
+      'FFIX_NODE_CLI="/path/to/dist/main.js"',
+      'fuck() {',
+      '    node "$FFIX_NODE_CLI" --context-file "$FFIX_CTX_PATH" --confirm',
+      '}',
+      '# <<< ffix init <<<',
+      'alias gs="git status"',
+    ].join('\n'))
+
+    await uninstall()
+
+    expect(writeFile).toHaveBeenCalledWith(
+      'C:\\Users\\test\\.config\\zsh\\.zshrc',
+      'export PATH="$HOME/bin:$PATH"\nalias gs="git status"',
+      'utf-8',
+    )
+  })
 })

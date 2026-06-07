@@ -375,4 +375,88 @@ describe('main()', () => {
       vi.resetModules()
     }
   })
+
+  it('loads zsh context from --context-file on darwin and passes it to the LLM', async () => {
+    const origArgv = process.argv
+    const origPlatform = process.platform
+    const context = {
+      lastCommand: 'brew udpate',
+      exitCode: 1,
+      errorOutput: 'zsh: command not found: udpate',
+      cwd: '/Users/test/repo',
+      shell: 'zsh' as const,
+      os: 'darwin' as const,
+      timestamp: '2026-06-07T00:00:00.000Z',
+    }
+    const ensureConfig = vi.fn().mockResolvedValue('ready')
+    const readContext = vi.fn().mockResolvedValue(null)
+    const readContextFromPath = vi.fn().mockResolvedValue(context)
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'brew update', confidence: 'high' })
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    try {
+      vi.resetModules()
+      vi.doMock('../config.js', () => ({ ensureConfig }))
+      vi.doMock('../context.js', () => ({ readContext, readContextFromPath }))
+      vi.doMock('../llm.js', () => ({ getFixSuggestion }))
+      vi.doMock('../shell.js', () => ({ install: vi.fn(), uninstall: vi.fn() }))
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+      process.argv = ['node', 'ffix', '--context-file', '/tmp/ffix_ctx.json', '--json']
+
+      const mod = await import('../main.js')
+      const exitCode = await mod.main()
+
+      expect(exitCode).toBe(0)
+      expect(process.platform).toBe('darwin')
+      expect(readContextFromPath).toHaveBeenCalledWith('/tmp/ffix_ctx.json')
+      expect(readContext).not.toHaveBeenCalled()
+      expect(getFixSuggestion).toHaveBeenCalledWith(context)
+      expect(consoleSpy).toHaveBeenCalledWith(JSON.stringify({ command: 'brew update', confidence: 'high' }))
+    } finally {
+      process.argv = origArgv
+      Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true })
+      consoleSpy.mockRestore()
+      vi.doUnmock('../config.js')
+      vi.doUnmock('../context.js')
+      vi.doUnmock('../llm.js')
+      vi.doUnmock('../shell.js')
+      vi.resetModules()
+    }
+  })
+
+  it('returns 1 when --context-file is combined with legacy context args', async () => {
+    const origArgv = process.argv
+    const ensureConfig = vi.fn().mockResolvedValue('ready')
+    const readContext = vi.fn().mockResolvedValue(null)
+    const readContextFromPath = vi.fn().mockResolvedValue(null)
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'git branch' })
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      vi.resetModules()
+      vi.doMock('../config.js', () => ({ ensureConfig }))
+      vi.doMock('../context.js', () => ({ readContext, readContextFromPath }))
+      vi.doMock('../llm.js', () => ({ getFixSuggestion }))
+      vi.doMock('../shell.js', () => ({ install: vi.fn(), uninstall: vi.fn() }))
+      process.argv = ['node', 'ffix', '--context-file', '/tmp/fuck_ctx.json', '--cmd', 'git brnch']
+
+      const mod = await import('../main.js')
+      const exitCode = await mod.main()
+
+      expect(exitCode).toBe(1)
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('cannot combine --context-file'))
+      expect(ensureConfig).not.toHaveBeenCalled()
+      expect(readContextFromPath).not.toHaveBeenCalled()
+      expect(readContext).not.toHaveBeenCalled()
+      expect(getFixSuggestion).not.toHaveBeenCalled()
+    } finally {
+      process.argv = origArgv
+      consoleSpy.mockRestore()
+      vi.doUnmock('../config.js')
+      vi.doUnmock('../context.js')
+      vi.doUnmock('../llm.js')
+      vi.doUnmock('../shell.js')
+      vi.resetModules()
+    }
+  })
 })
