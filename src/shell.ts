@@ -141,7 +141,8 @@ export async function install(): Promise<void> {
   let content = ''
   try {
     content = await readFile(profilePath, 'utf-8')
-  } catch {
+  } catch (err) {
+    /* first install: $PROFILE may not exist yet, that's OK */
   }
 
   if (content.includes('# >>> fuck init >>>')) {

@@ -21,10 +21,10 @@ async function importLlmWithResponse(body: unknown) {
       apiKey: 'sk-test',
       model: 'gpt-test',
     }),
-    loadAppConfig: vi.fn().mockResolvedValue({
+    appConfig: {
       timeoutMs: 1000,
       tempFilePath: '%TEMP%\\fuck_ctx_<session>.json',
-    }),
+    },
   }))
   vi.stubGlobal('fetch', fetchMock)
 
@@ -147,7 +147,7 @@ describe('getFixSuggestion()', () => {
     vi.resetModules()
     vi.doMock('../config.js', () => ({
       loadUserConfig: vi.fn().mockResolvedValue({ baseUrl: '', apiKey: '', model: '' }),
-      loadAppConfig: vi.fn().mockResolvedValue({ timeoutMs: 1000, tempFilePath: '' }),
+      appConfig: { timeoutMs: 1000, tempFilePath: '' },
     }))
     const mod = await import('../llm.js')
 
@@ -163,7 +163,7 @@ describe('getFixSuggestion()', () => {
     vi.resetModules()
     vi.doMock('../config.js', () => ({
       loadUserConfig: vi.fn().mockResolvedValue({ baseUrl: '', apiKey: '', model: '' }),
-      loadAppConfig: vi.fn().mockResolvedValue({ timeoutMs: 1000, tempFilePath: '' }),
+      appConfig: { timeoutMs: 1000, tempFilePath: '' },
     }))
     const mod = await import('../llm.js')
 

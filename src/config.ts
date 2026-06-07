@@ -82,6 +82,4 @@ export function validateUserConfig(config: Partial<UserConfig>): string[] {
   return errors
 }
 
-export async function loadAppConfig(): Promise<AppConfig> {
-  return DEFAULT_APP_CONFIG
-}
+export const appConfig: AppConfig = DEFAULT_APP_CONFIG

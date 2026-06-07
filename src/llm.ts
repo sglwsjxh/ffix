@@ -1,5 +1,5 @@
 import type { FixContext, FixSuggestion } from './types.js'
-import { loadUserConfig, loadAppConfig } from './config.js'
+import { loadUserConfig, appConfig } from './config.js'
 
 type Confidence = NonNullable<FixSuggestion['confidence']>
 
@@ -68,10 +68,7 @@ function isConfidence(value: string): value is Confidence {
 
 export async function getFixSuggestion(context: FixContext): Promise<FixSuggestion | null> {
   try {
-    const [userConfig, appConfig] = await Promise.all([
-      loadUserConfig(),
-      loadAppConfig(),
-    ])
+    const userConfig = await loadUserConfig()
 
     const url = `${userConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`
 

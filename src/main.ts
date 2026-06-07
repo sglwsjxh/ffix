@@ -23,8 +23,8 @@ export function keyPress(): Promise<string> {
         try {
           process.stdin.setRawMode(false)
           process.stdin.pause()
-        } catch {
-          // Best effort cleanup
+        } catch (err) {
+          // Best effort cleanup: stdin stream may already be closed
         }
 
         const key = data.toString()
@@ -40,8 +40,8 @@ export function keyPress(): Promise<string> {
       try {
         process.stdin.setRawMode(false)
         process.stdin.pause()
-      } catch {
-        // Best effort cleanup
+      } catch (err2) {
+        // Best effort cleanup: stdin stream may already be closed
       }
       reject(err)
     }

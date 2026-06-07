@@ -1,6 +1,6 @@
 import type { FixContext } from './types.js'
 import { readFile, unlink } from 'node:fs/promises'
-import { loadAppConfig } from './config.js'
+import { appConfig } from './config.js'
 
 function resolveTempPath(template: string): string {
   const tempDir = process.env.TEMP ?? process.env.TMPDIR ?? ''
@@ -8,7 +8,6 @@ function resolveTempPath(template: string): string {
 }
 
 export async function readContext(): Promise<FixContext | null> {
-  const appConfig = await loadAppConfig()
   const filePath = resolveTempPath(appConfig.tempFilePath)
   return readContextFromPath(filePath)
 }
@@ -25,6 +24,6 @@ export async function readContextFromPath(filePath: string): Promise<FixContext 
   } catch {
     return null
   } finally {
-    try { await unlink(filePath) } catch { }
+    try { await unlink(filePath) } catch { /* cleanup-only, swallow unlink error */ }
   }
 }
