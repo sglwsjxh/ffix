@@ -195,6 +195,7 @@ export async function main(): Promise<number> {
     return 1
   }
 
+  w(`上一条命令：${context.lastCommand}\n`)
   const suggestion = await getFixSuggestion(context)
 
   if (!suggestion || !suggestion.command) {
@@ -203,7 +204,6 @@ export async function main(): Promise<number> {
   }
 
   if (args.confirm) {
-    w(`上一条命令：${context.lastCommand}\n\n`)
     w(`\x1b[32m✦  建议执行：${suggestion.command}\x1b[0m\n\n`)
     w('Enter = 执行    Ctrl+C = 取消')
 
