@@ -11,6 +11,16 @@ const context: FixContext = {
   timestamp: '2026-06-07T00:00:00.000Z',
 }
 
+const zshContext: FixContext = {
+  lastCommand: 'brew udpate',
+  exitCode: 1,
+  errorOutput: 'zsh: command not found: udpate',
+  cwd: '/Users/test/repo',
+  shell: 'zsh',
+  os: 'darwin',
+  timestamp: '2026-06-07T00:00:00.000Z',
+}
+
 async function importLlmWithResponse(body: unknown) {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }))
 
@@ -157,6 +167,20 @@ describe('getFixSuggestion()', () => {
     expect(prompt).toContain(context.lastCommand)
     expect(prompt).toContain(context.errorOutput)
     expect(prompt).toContain(context.cwd)
+  })
+
+  it('buildUserPrompt includes zsh and darwin context values', async () => {
+    vi.resetModules()
+    vi.doMock('../config.js', () => ({
+      loadUserConfig: vi.fn().mockResolvedValue({ baseUrl: '', apiKey: '', model: '' }),
+      appConfig: { timeoutMs: 1000, tempFilePath: '' },
+    }))
+    const mod = await import('../llm.js')
+
+    const prompt = mod.buildUserPrompt(zshContext)
+    expect(prompt).toContain('Shell：zsh')
+    expect(prompt).toContain('操作系统：darwin')
+    expect(prompt).toContain(zshContext.cwd)
   })
 
   it('SYSTEM_PROMPT contains defense rule against injection', async () => {
