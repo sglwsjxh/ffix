@@ -139,17 +139,31 @@ ${zshCliPathValue(cliPath)}`
 }
 
 function zshContextPathSection(): string {
-  return `# 会话隔离的上下文文件路径（B2 会填充写入逻辑）
+  return `# 会话隔离的上下文文件路径（ffix_precmd 会把失败命令上下文写到这里）
 : \${FFIX_CTX_PATH:="\${TMPDIR:-/tmp}/ffix_ctx_$$.json"}`
 }
 
 function zshHooksSection(): string {
   return `ffix_preexec() {
-    # B2 will capture the command before execution here.
+    # 保存用户输入的原始命令（$1 是 preexec 的第一个参数 = 原始输入）
+    FFIX_LAST_CMD="$1"
 }
 
 ffix_precmd() {
-    # B2 will write context JSON here; for v1, errorOutput is ''.
+    local exit_code=$?
+
+    # 只在命令失败时写上下文；过滤 fuck 自身，避免自记录
+    if [[ $exit_code -ne 0 && "$FFIX_LAST_CMD" != "fuck"* ]]; then
+        local ctx
+        ctx=$(printf '{"lastCommand":"%s","exitCode":%d,"errorOutput":"","cwd":"%s","shell":"zsh","os":"darwin","timestamp":"%s"}' \\
+            "\${FFIX_LAST_CMD:-}" \\
+            "$exit_code" \\
+            "\${PWD:-}" \\
+            "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)")
+        printf '%s\\n' "$ctx" > "$FFIX_CTX_PATH"
+    fi
+
+    return 0
 }
 
 autoload -Uz add-zsh-hook && add-zsh-hook preexec ffix_preexec && add-zsh-hook precmd ffix_precmd`

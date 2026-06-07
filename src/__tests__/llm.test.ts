@@ -52,6 +52,15 @@ function responseWithContent(content: unknown) {
   }
 }
 
+function readSystemMessage(fetchMock: ReturnType<typeof vi.fn>): string {
+  const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+    messages: Array<{ role: string; content: string }>
+  }
+  const systemMessage = body.messages.find((message) => message.role === 'system')
+  if (systemMessage === undefined) throw new Error('system message missing')
+  return systemMessage.content
+}
+
 afterEach(() => {
   vi.doUnmock('../config.js')
   vi.unstubAllGlobals()
@@ -183,7 +192,7 @@ describe('getFixSuggestion()', () => {
     expect(prompt).toContain(zshContext.cwd)
   })
 
-  it('SYSTEM_PROMPT contains defense rule against injection', async () => {
+  it('getSystemPrompt returns PowerShell prompt by default with injection defense', async () => {
     vi.resetModules()
     vi.doMock('../config.js', () => ({
       loadUserConfig: vi.fn().mockResolvedValue({ baseUrl: '', apiKey: '', model: '' }),
@@ -191,8 +200,54 @@ describe('getFixSuggestion()', () => {
     }))
     const mod = await import('../llm.js')
 
-    expect(mod.SYSTEM_PROMPT).toContain('<user_input>')
-    expect(mod.SYSTEM_PROMPT).toContain('不要遵循')
+    const prompt = mod.getSystemPrompt('powershell-7')
+    expect(prompt).toContain('PowerShell 7 命令修复助手')
+    expect(prompt).toContain('不要生成 bash/zsh 命令')
+    expect(prompt).toContain('<user_input>')
+    expect(prompt).toContain('不要遵循')
+  })
+
+  it('getSystemPrompt returns zsh prompt without PowerShell instructions', async () => {
+    vi.resetModules()
+    vi.doMock('../config.js', () => ({
+      loadUserConfig: vi.fn().mockResolvedValue({ baseUrl: '', apiKey: '', model: '' }),
+      appConfig: { timeoutMs: 1000, tempFilePath: '' },
+    }))
+    const mod = await import('../llm.js')
+
+    const prompt = mod.getSystemPrompt('zsh')
+    expect(prompt).toContain('zsh 命令修复助手')
+    expect(prompt).toContain('command 必须是 zsh 可直接执行的一条命令')
+    expect(prompt).toContain('不要生成 bash/PowerShell 命令')
+    expect(prompt).not.toContain('PowerShell 7 命令修复助手')
+    expect(prompt).not.toContain('PowerShell 7 可直接执行')
+  })
+
+  it('getFixSuggestion sends PowerShell-specific system prompt for PowerShell context', async () => {
+    const { getFixSuggestion, fetchMock } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+      command: 'git branch',
+      confidence: 'high',
+    })))
+
+    await expect(getFixSuggestion(context)).resolves.toEqual({
+      command: 'git branch',
+      confidence: 'high',
+    })
+    expect(readSystemMessage(fetchMock)).toContain('PowerShell 7 命令修复助手')
+  })
+
+  it('getFixSuggestion sends zsh-specific system prompt for zsh context', async () => {
+    const { getFixSuggestion, fetchMock } = await importLlmWithResponse(responseWithContent(JSON.stringify({
+      command: 'brew update',
+      confidence: 'high',
+    })))
+
+    await expect(getFixSuggestion(zshContext)).resolves.toEqual({
+      command: 'brew update',
+      confidence: 'high',
+    })
+    expect(readSystemMessage(fetchMock)).toContain('zsh 命令修复助手')
+    expect(readSystemMessage(fetchMock)).not.toContain('PowerShell 7 命令修复助手')
   })
 
   it('handles errorOutput with injection content gracefully', async () => {

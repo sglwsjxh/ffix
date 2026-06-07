@@ -71,10 +71,38 @@ describe('generateZshProfileScript()', () => {
     expect(script).toContain(': ${FFIX_CTX_PATH:="${TMPDIR:-/tmp}/ffix_ctx_$$.json"}')
     expect(script).toContain('ffix_preexec()')
     expect(script).toContain('ffix_precmd()')
-    expect(script).toContain('errorOutput is \'\'')
     expect(script).toContain('autoload -Uz add-zsh-hook && add-zsh-hook preexec ffix_preexec && add-zsh-hook precmd ffix_precmd')
     expect(script).toContain('node "$FFIX_NODE_CLI" --context-file "$ctxPath" --confirm')
     expect(script).toContain('eval "$suggestion"')
+  })
+
+  it('captures the raw zsh preexec command into a module-level variable', () => {
+    const script = generateZshProfileScript()
+
+    expect(script).toContain('ffix_preexec() {\n    # 保存用户输入的原始命令')
+    expect(script).toContain('FFIX_LAST_CMD="$1"')
+  })
+
+  it('writes failed zsh command context JSON from precmd using FFIX_CTX_PATH', () => {
+    const script = generateZshProfileScript()
+
+    expect(script).toContain('ffix_precmd() {\n    local exit_code=$?')
+    expect(script).toContain('if [[ $exit_code -ne 0 && "$FFIX_LAST_CMD" != "fuck"* ]]; then')
+    expect(script).toContain('ctx=$(printf \'{"lastCommand":"%s","exitCode":%d,"errorOutput":"","cwd":"%s","shell":"zsh","os":"darwin","timestamp":"%s"}\' \\')
+    expect(script).toContain('"${FFIX_LAST_CMD:-}"')
+    expect(script).toContain('"${PWD:-}"')
+    expect(script).toContain('"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"')
+    expect(script).toContain('printf \'%s\\n\' "$ctx" > "$FFIX_CTX_PATH"')
+    expect(script).toContain('return 0')
+  })
+
+  it('uses add-zsh-hook rather than overwriting top-level zsh hook functions', () => {
+    const script = generateZshProfileScript()
+
+    expect(script).toContain('add-zsh-hook preexec ffix_preexec')
+    expect(script).toContain('add-zsh-hook precmd ffix_precmd')
+    expect(script).not.toContain('\npreexec()')
+    expect(script).not.toContain('\nprecmd()')
   })
 
   it('uses npm root -g fallback when cliPath is not provided', () => {
