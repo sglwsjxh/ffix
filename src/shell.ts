@@ -21,14 +21,6 @@ export function getProfilePath(): string {
 }
 
 /**
- * 检测当前是否在 PowerShell 7 环境中运行
- * 通过检查 PSModulePath 环境变量是否包含 "PowerShell\" 来判断
- */
-export async function detectPs7(): Promise<boolean> {
-  return (process.env.PSModulePath ?? '').includes('PowerShell\\')
-}
-
-/**
  * 生成要注入到 $PROFILE 的 PowerShell 脚本
  * 内容包含：
  * - 标记块 # >>> fuck init >>> / # <<< fuck init <<<

@@ -59,39 +59,89 @@ interface CliArgs {
   confirm: boolean
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = { json: false, quiet: false, confirm: false }
 
   for (let i = 0; i < argv.length; i++) {
-    switch (argv[i]) {
-      case 'install':
-        args.subcommand = 'install'
-        break
-      case 'uninstall':
-        args.subcommand = 'uninstall'
-        break
-      case '--cmd':
-        args.cmd = argv[++i]
-        break
-      case '--exit-code':
-        args.exitCode = Number(argv[++i])
-        break
-      case '--error-output':
-        args.errorOutput = argv[++i]
-        break
-      case '--cwd':
-        args.cwd = argv[++i]
-        break
-      case '--json':
-        args.json = true
-        break
-      case '--quiet':
-        args.quiet = true
-        break
-      case '--confirm':
-        args.confirm = true
-        break
+    const arg = argv[i]
+
+    if (arg === 'install') {
+      args.subcommand = 'install'
+      continue
     }
+
+    if (arg === 'uninstall') {
+      args.subcommand = 'uninstall'
+      continue
+    }
+
+    if (arg.startsWith('--')) {
+      if (arg === '--cmd') {
+        const val = argv[++i]
+        if (val === undefined || val === '') {
+          console.error('error: --cmd requires a non-empty value')
+          process.exit(1)
+        }
+        args.cmd = val
+        continue
+      }
+
+      if (arg === '--exit-code') {
+        const val = argv[++i]
+        if (val === undefined) {
+          console.error('error: --exit-code requires a numeric value')
+          process.exit(1)
+        }
+        const num = Number(val)
+        if (!Number.isFinite(num) || !Number.isInteger(num)) {
+          console.error(`error: --exit-code must be a finite integer, got "${val}"`)
+          process.exit(1)
+        }
+        args.exitCode = num
+        continue
+      }
+
+      if (arg === '--error-output') {
+        const val = argv[++i]
+        if (val === undefined) {
+          console.error('error: --error-output requires a value')
+          process.exit(1)
+        }
+        args.errorOutput = val
+        continue
+      }
+
+      if (arg === '--cwd') {
+        const val = argv[++i]
+        if (val === undefined) {
+          console.error('error: --cwd requires a value')
+          process.exit(1)
+        }
+        args.cwd = val
+        continue
+      }
+
+      if (arg === '--json') {
+        args.json = true
+        continue
+      }
+
+      if (arg === '--quiet') {
+        args.quiet = true
+        continue
+      }
+
+      if (arg === '--confirm') {
+        args.confirm = true
+        continue
+      }
+
+      console.error(`error: unknown flag ${arg}`)
+      process.exit(1)
+    }
+
+    console.error(`error: unknown argument "${arg}"`)
+    process.exit(1)
   }
 
   return args
