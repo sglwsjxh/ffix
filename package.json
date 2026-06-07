@@ -1,6 +1,6 @@
 {
   "name": "@sglwsjxh/ffix",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "PowerShell 命令修复工具 —— 敲错命令了？fuck !! 自动修复",
   "license": "MIT",
   "engines": {

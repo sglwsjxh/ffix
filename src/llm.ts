@@ -95,7 +95,6 @@ export async function getFixSuggestion(context: FixContext): Promise<FixSuggesti
       ],
       temperature: 0.2,
       max_tokens: 1024,
-      reasoning_effort: 'none',
     })
 
     const controller = new AbortController()
