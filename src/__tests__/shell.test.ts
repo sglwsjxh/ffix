@@ -22,6 +22,18 @@ describe('generateProfileScript()', () => {
     expect(script).toContain(`$ctxPath = "${isolatedPath}"`)
   })
 
+  it('passes context file path to CLI instead of expanding JSON into legacy args', () => {
+    const script = generateProfileScript()
+
+    expect(script).toContain('& node "$Fuck_NodeCli" --context-file "$ctxPath" --confirm')
+    expect(script).not.toContain('Get-Content $ctxPath -Raw | ConvertFrom-Json')
+    expect(script).not.toContain('Remove-Item $ctxPath')
+    expect(script).not.toContain('--cmd "$($ctx.lastCommand)"')
+    expect(script).not.toContain('--exit-code $ctx.exitCode')
+    expect(script).not.toContain('--error-output "$($ctx.errorOutput)"')
+    expect(script).not.toContain('--cwd "$($ctx.cwd)"')
+  })
+
   it('uses provided cliPath instead of npm root -g fallback', () => {
     const cliPath = '/path/to/dist/main.js'
     const script = generateProfileScript(cliPath)

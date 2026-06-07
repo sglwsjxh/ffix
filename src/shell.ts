@@ -103,16 +103,7 @@ function fuck {
         return
     }
 
-    $ctx = Get-Content $ctxPath -Raw | ConvertFrom-Json
-    if (-not $ctx) {
-        Write-Host "没有找到上一条命令的上下文"
-        return
-    }
-
-    # 读取后立即删除，避免被下一轮 prompt hook 覆盖
-    Remove-Item $ctxPath -Force -ErrorAction SilentlyContinue
-
-    $command = & node "$Fuck_NodeCli" --cmd "$($ctx.lastCommand)" --exit-code $ctx.exitCode --error-output "$($ctx.errorOutput)" --cwd "$($ctx.cwd)" --confirm
+    $command = & node "$Fuck_NodeCli" --context-file "$ctxPath" --confirm
 
     if (-not [string]::IsNullOrWhiteSpace($command)) {
         iex "$command"
