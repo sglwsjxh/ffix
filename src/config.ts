@@ -22,7 +22,7 @@ export async function ensureConfig(): Promise<'ready' | 'created'> {
   try {
     await readFile(CONFIG_PATH, 'utf-8')
     return 'ready'
-  } catch {
+  } catch (err) {
     await mkdir(CONFIG_DIR, { recursive: true })
     await writeFile(CONFIG_PATH, JSON.stringify(DEFAULT_USER_CONFIG, null, 4), 'utf-8')
     console.log(`首次使用，请配置 API 信息：${CONFIG_PATH}`)
@@ -36,7 +36,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
 
   try {
     parsed = JSON.parse(raw) as Partial<UserConfig>
-  } catch {
+  } catch (parseErr) {
     console.error(`配置文件 ${CONFIG_PATH} 格式错误，请检查 JSON 语法后重新运行`)
     throw new Error('配置文件格式错误')
   }
@@ -64,7 +64,7 @@ export function validateUserConfig(config: Partial<UserConfig>): string[] {
   } else {
     try {
       new URL(config.baseUrl)
-    } catch {
+    } catch (urlErr) {
       errors.push('baseUrl 配置无效：必须是可解析的绝对 URL，例如 https://api.example.com')
     }
   }

@@ -122,7 +122,7 @@ export async function getFixSuggestion(context: FixContext): Promise<FixSuggesti
     let parsed: unknown
     try {
       parsed = JSON.parse(content)
-    } catch {
+    } catch (parseErr) {
       console.error('[llm] Failed to parse LLM response as JSON:', content)
       return null
     }
