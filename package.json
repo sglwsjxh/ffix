@@ -1,7 +1,11 @@
 {
   "name": "@sglwsjxh/ffix",
   "version": "1.1.0",
+  "description": "PowerShell 命令修复工具 —— 敲错命令了？fuck !! 自动修复",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "repository": "https://github.com/sglwsjxh/ffix.git",
   "type": "module",
   "bin": {
@@ -21,10 +25,10 @@
     "package.json"
   ],
   "devDependencies": {
-    "@types/node": "*",
-    "tsup": "*",
-    "tsx": "*",
-    "typescript": "*",
+    "@types/node": "^25.9.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }
 }
