@@ -79,7 +79,7 @@ describe('generateZshProfileScript()', () => {
   it('captures the raw zsh preexec command into a module-level variable', () => {
     const script = generateZshProfileScript()
 
-    expect(script).toContain('ffix_preexec() {\n    # 保存用户输入的原始命令')
+    expect(script).toContain('ffix_preexec() {\n    FFIX_LAST_CMD="$1"')
     expect(script).toContain('FFIX_LAST_CMD="$1"')
   })
 
@@ -88,12 +88,39 @@ describe('generateZshProfileScript()', () => {
 
     expect(script).toContain('ffix_precmd() {\n    local exit_code=$?')
     expect(script).toContain('if [[ $exit_code -ne 0 && "$FFIX_LAST_CMD" != "fuck"* ]]; then')
+    expect(script).toContain('escaped_cmd=$(ffix_json_escape "${FFIX_LAST_CMD:-}")')
+    expect(script).toContain('escaped_cwd=$(ffix_json_escape "${PWD:-}")')
     expect(script).toContain('ctx=$(printf \'{"lastCommand":"%s","exitCode":%d,"errorOutput":"","cwd":"%s","shell":"zsh","os":"darwin","timestamp":"%s"}\' \\')
-    expect(script).toContain('"${FFIX_LAST_CMD:-}"')
-    expect(script).toContain('"${PWD:-}"')
+    expect(script).toContain('"$escaped_cmd"')
+    expect(script).toContain('"$escaped_cwd"')
     expect(script).toContain('"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"')
     expect(script).toContain('printf \'%s\\n\' "$ctx" > "$FFIX_CTX_PATH"')
     expect(script).toContain('return 0')
+  })
+
+  it('escapes zsh command and cwd values so special chars still produce valid JSON', () => {
+    const script = generateZshProfileScript()
+    const command = 'printf "hi" \\\\ path\nnext\tline'
+    const cwd = '/tmp/project "quoted" \\\\ dir\nnext\tpart'
+    const escapeForJson = (value: string): string => value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
+
+    const json = `{"lastCommand":"${escapeForJson(command)}","exitCode":2,"errorOutput":"","cwd":"${escapeForJson(cwd)}","shell":"zsh","os":"darwin","timestamp":"2026-06-07T00:00:00.000Z"}`
+
+    expect(script).toContain('ffix_json_escape()')
+    expect(script).toContain('s="${s//\\/\\\\}"')
+    expect(script).toContain('s="${s//"/\\"}"')
+    expect(script).toMatch(/s="\$\{s\/\/\$'\\n'\/\\\\n\}"/)
+    expect(script).toMatch(/s="\$\{s\/\/\$'\\t'\/\\\\t\}"/)
+    expect(JSON.parse(json)).toMatchObject({
+      lastCommand: command,
+      cwd,
+      shell: 'zsh',
+      os: 'darwin',
+    })
   })
 
   it('uses add-zsh-hook rather than overwriting top-level zsh hook functions', () => {

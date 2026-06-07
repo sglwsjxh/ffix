@@ -318,7 +318,7 @@ describe('main()', () => {
       expect(readFile).toHaveBeenCalled()
       expect(mkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true })
       expect(writeFile).toHaveBeenCalled()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('请编辑 config/config.json 配置文件后重新运行'))
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('请编辑 ~/.ffix/config.json 配置文件后重新运行'))
       expect(readContext).not.toHaveBeenCalled()
       expect(getFixSuggestion).not.toHaveBeenCalled()
     } finally {

@@ -196,7 +196,7 @@ export async function main(): Promise<number> {
 
   const configStatus = await ensureConfig()
   if (configStatus === 'created') {
-    console.log('请编辑 config/config.json 配置文件后重新运行')
+    console.log('请编辑 ~/.ffix/config.json 配置文件后重新运行')
     return 0
   }
 

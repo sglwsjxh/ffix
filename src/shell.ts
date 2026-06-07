@@ -145,24 +145,33 @@ function zshContextPathSection(): string {
 
 function zshHooksSection(): string {
   return `ffix_preexec() {
-    # 保存用户输入的原始命令（$1 是 preexec 的第一个参数 = 原始输入）
     FFIX_LAST_CMD="$1"
+}
+
+ffix_json_escape() {
+    local s="$1"
+    s="\${s//\\/\\\\}"
+    s="\${s//\"/\\\"}"
+    s="\${s//\$'\\n'/\\\\n}"
+    s="\${s//\$'\\t'/\\\\t}"
+    printf '%s' "$s"
 }
 
 ffix_precmd() {
     local exit_code=$?
-
-    # 只在命令失败时写上下文；过滤 fuck 自身，避免自记录
     if [[ $exit_code -ne 0 && "$FFIX_LAST_CMD" != "fuck"* ]]; then
+        local escaped_cmd
+        local escaped_cwd
+        escaped_cmd=$(ffix_json_escape "\${FFIX_LAST_CMD:-}")
+        escaped_cwd=$(ffix_json_escape "\${PWD:-}")
         local ctx
         ctx=$(printf '{"lastCommand":"%s","exitCode":%d,"errorOutput":"","cwd":"%s","shell":"zsh","os":"darwin","timestamp":"%s"}' \\
-            "\${FFIX_LAST_CMD:-}" \\
+            "$escaped_cmd" \\
             "$exit_code" \\
-            "\${PWD:-}" \\
+            "$escaped_cwd" \\
             "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)")
         printf '%s\\n' "$ctx" > "$FFIX_CTX_PATH"
     fi
-
     return 0
 }
 

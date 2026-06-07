@@ -66,6 +66,37 @@ describe('readContextFromPath()', () => {
     await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toBeNull()
   })
 
+  it('returns null for invalid shell or os values', async () => {
+    const invalidContexts = [
+      {
+        lastCommand: 'git brnch',
+        exitCode: 1,
+        errorOutput: '',
+        cwd: '/repo',
+        shell: 'bash',
+        os: 'darwin',
+        timestamp: '2026-06-07T00:00:00.000Z',
+      },
+      {
+        lastCommand: 'git brnch',
+        exitCode: 1,
+        errorOutput: '',
+        cwd: '/repo',
+        shell: 'zsh',
+        os: 'linux',
+        timestamp: '2026-06-07T00:00:00.000Z',
+      },
+    ]
+
+    for (const ctx of invalidContexts) {
+      const readFile = vi.fn().mockResolvedValue(JSON.stringify(ctx))
+      const unlink = vi.fn().mockResolvedValue(undefined)
+      const { readContextFromPath } = await importContextWithFs(readFile, unlink)
+
+      await expect(readContextFromPath('/tmp/fuck_ctx.json')).resolves.toBeNull()
+    }
+  })
+
   it('cleans up the context file in its finally block', async () => {
     const readFile = vi.fn().mockResolvedValue(JSON.stringify({
       lastCommand: 'git brnch',
