@@ -184,7 +184,7 @@ export async function uninstall(): Promise<void> {
   let content: string
   try {
     content = await readFile(profilePath, 'utf-8')
-  } catch {
+  } catch (err) {
     console.log('没有找到 $PROFILE')
     return
   }

@@ -21,9 +21,10 @@ export async function readContextFromPath(filePath: string): Promise<FixContext 
     if (typeof ctx.exitCode !== 'number') return null
 
     return ctx
-  } catch {
+  } catch (err) {
+    /* context file not found or invalid, return null */
     return null
   } finally {
-    try { await unlink(filePath) } catch { /* cleanup-only, swallow unlink error */ }
+    try { await unlink(filePath) } catch (cleanupErr) { /* cleanup-only: unlink temp context file */ }
   }
 }

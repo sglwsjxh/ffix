@@ -138,6 +138,11 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error('parse error')
   }
 
+  if (args.subcommand && (args.cmd !== undefined || args.exitCode !== undefined || args.errorOutput !== undefined || args.cwd !== undefined)) {
+    console.error('error: cannot combine install/uninstall with fix arguments (--cmd, --exit-code, --error-output, --cwd)')
+    throw new Error('parse error')
+  }
+
   return args
 }
 
@@ -157,7 +162,7 @@ export async function main(): Promise<number> {
   let args: CliArgs
   try {
     args = parseArgs(process.argv.slice(2))
-  } catch {
+  } catch (parseErr) {
     return 1
   }
 
@@ -211,7 +216,7 @@ export async function main(): Promise<number> {
       }
       process.stderr.write('\n\n已取消\n')
       return 1
-    } catch {
+    } catch (confirmErr) {
       return 1
     }
   }
