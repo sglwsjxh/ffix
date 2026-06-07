@@ -7,6 +7,7 @@ type CliArgs = {
   exitCode?: number
   errorOutput?: string
   cwd?: string
+  contextFile?: string
   json: boolean
   confirm: boolean
 }
@@ -163,6 +164,16 @@ describe('parseArgs()', () => {
     })
   })
 
+  it('parses --context-file', async () => {
+    const { parseArgs } = await import('../main.js')
+    const result = parseArgs(['--context-file', '/tmp/fuck_ctx.json', '--json'])
+    expect(result).toEqual({
+      contextFile: '/tmp/fuck_ctx.json',
+      json: true,
+      confirm: false,
+    })
+  })
+
   it('rejects unknown flag', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
@@ -184,6 +195,22 @@ describe('parseArgs()', () => {
     const { parseArgs } = await import('../main.js')
     expect(() => parseArgs(['--cmd'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--cmd'))
+    consoleSpy.mockRestore()
+  })
+
+  it('rejects missing value after --context-file', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { parseArgs } = await import('../main.js')
+    expect(() => parseArgs(['--context-file'])).toThrow()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--context-file'))
+    consoleSpy.mockRestore()
+  })
+
+  it('rejects empty string for --context-file', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { parseArgs } = await import('../main.js')
+    expect(() => parseArgs(['--context-file', ''])).toThrow()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--context-file'))
     consoleSpy.mockRestore()
   })
 
@@ -256,12 +283,20 @@ describe('parseArgs()', () => {
     const result = parseArgs(['--cmd', 'echo', '--exit-code', '0'])
     expect(result.exitCode).toBe(0)
   })
+
+  it('rejects --context-file mixed with legacy context args', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { parseArgs } = await import('../main.js')
+    expect(() => parseArgs(['--context-file', '/tmp/fuck_ctx.json', '--cmd', 'git brnch'])).toThrow()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('cannot combine --context-file'))
+    consoleSpy.mockRestore()
+  })
 })
 
 describe('main()', () => {
   it('creates missing config and returns 0 before reading context or calling LLM', async () => {
     const origArgv = process.argv
-    const readFile = vi.fn().mockRejectedValue(new Error('config missing'))
+    const readFile = vi.fn().mockRejectedValue({ code: 'ENOENT' })
     const writeFile = vi.fn().mockResolvedValue(undefined)
     const mkdir = vi.fn().mockResolvedValue(undefined)
     const readContext = vi.fn().mockResolvedValue(null)
@@ -290,6 +325,50 @@ describe('main()', () => {
       process.argv = origArgv
       consoleSpy.mockRestore()
       vi.doUnmock('node:fs/promises')
+      vi.doUnmock('../context.js')
+      vi.doUnmock('../llm.js')
+      vi.doUnmock('../shell.js')
+      vi.resetModules()
+    }
+  })
+
+  it('loads context from --context-file before falling back to legacy context readers', async () => {
+    const origArgv = process.argv
+    const context = {
+      lastCommand: 'git brnch',
+      exitCode: 1,
+      errorOutput: 'git: brnch is not a git command',
+      cwd: '/repo',
+      shell: 'zsh' as const,
+      os: 'darwin' as const,
+      timestamp: '2026-06-07T00:00:00.000Z',
+    }
+    const ensureConfig = vi.fn().mockResolvedValue('ready')
+    const readContext = vi.fn().mockResolvedValue(null)
+    const readContextFromPath = vi.fn().mockResolvedValue(context)
+    const getFixSuggestion = vi.fn().mockResolvedValue({ command: 'git branch', confidence: 'high' })
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    try {
+      vi.resetModules()
+      vi.doMock('../config.js', () => ({ ensureConfig }))
+      vi.doMock('../context.js', () => ({ readContext, readContextFromPath }))
+      vi.doMock('../llm.js', () => ({ getFixSuggestion }))
+      vi.doMock('../shell.js', () => ({ install: vi.fn(), uninstall: vi.fn() }))
+      process.argv = ['node', 'ffix', '--context-file', '/tmp/fuck_ctx.json']
+
+      const mod = await import('../main.js')
+      const exitCode = await mod.main()
+
+      expect(exitCode).toBe(0)
+      expect(readContextFromPath).toHaveBeenCalledWith('/tmp/fuck_ctx.json')
+      expect(readContext).not.toHaveBeenCalled()
+      expect(getFixSuggestion).toHaveBeenCalledWith(context)
+      expect(consoleSpy).toHaveBeenCalledWith('git branch')
+    } finally {
+      process.argv = origArgv
+      consoleSpy.mockRestore()
+      vi.doUnmock('../config.js')
       vi.doUnmock('../context.js')
       vi.doUnmock('../llm.js')
       vi.doUnmock('../shell.js')

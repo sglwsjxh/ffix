@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readContext } from './context.js'
+import { readContext, readContextFromPath } from './context.js'
 import { getFixSuggestion } from './llm.js'
 import { install, uninstall } from './shell.js'
 import { ensureConfig } from './config.js'
@@ -54,6 +54,7 @@ interface CliArgs {
   exitCode?: number
   errorOutput?: string
   cwd?: string
+  contextFile?: string
   json: boolean
   confirm: boolean
 }
@@ -82,6 +83,16 @@ export function parseArgs(argv: string[]): CliArgs {
           throw new Error('parse error')
         }
         args.cmd = val
+        continue
+      }
+
+      if (arg === '--context-file') {
+        const val = argv[++i]
+        if (val === undefined || val === '') {
+          console.error('error: --context-file requires a non-empty value')
+          throw new Error('parse error')
+        }
+        args.contextFile = val
         continue
       }
 
@@ -138,8 +149,15 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error('parse error')
   }
 
-  if (args.subcommand && (args.cmd !== undefined || args.exitCode !== undefined || args.errorOutput !== undefined || args.cwd !== undefined)) {
-    console.error('error: cannot combine install/uninstall with fix arguments (--cmd, --exit-code, --error-output, --cwd)')
+  const hasLegacyContextArgs = args.cmd !== undefined || args.exitCode !== undefined || args.errorOutput !== undefined || args.cwd !== undefined
+
+  if (args.contextFile !== undefined && hasLegacyContextArgs) {
+    console.error('error: cannot combine --context-file with legacy context arguments (--cmd, --exit-code, --error-output, --cwd)')
+    throw new Error('parse error')
+  }
+
+  if (args.subcommand && (hasLegacyContextArgs || args.contextFile !== undefined)) {
+    console.error('error: cannot combine install/uninstall with fix arguments (--context-file, --cmd, --exit-code, --error-output, --cwd)')
     throw new Error('parse error')
   }
 
@@ -184,7 +202,9 @@ export async function main(): Promise<number> {
 
   let context: FixContext | null = null
 
-  if (args.cmd && args.exitCode !== undefined && !Number.isNaN(args.exitCode)) {
+  if (args.contextFile !== undefined) {
+    context = await readContextFromPath(args.contextFile)
+  } else if (args.cmd && args.exitCode !== undefined && !Number.isNaN(args.exitCode)) {
     context = buildContextFromArgs(args)
   } else {
     context = await readContext()

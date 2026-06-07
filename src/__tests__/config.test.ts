@@ -120,3 +120,54 @@ describe('loadUserConfig()', () => {
     expect(output).toContain('JSON')
   })
 })
+
+describe('ensureConfig()', () => {
+  it('returns "ready" when config already exists', async () => {
+    vi.resetModules()
+    vi.doMock('node:fs/promises', () => ({
+      readFile: vi.fn().mockResolvedValue('{}'),
+      writeFile: vi.fn(),
+      mkdir: vi.fn(),
+    }))
+
+    const { ensureConfig } = await import('../config.js')
+    const result = await ensureConfig()
+
+    expect(result).toBe('ready')
+  })
+
+  it('creates default config on ENOENT and returns "created"', async () => {
+    const writeFile = vi.fn()
+    const mkdir = vi.fn()
+
+    vi.resetModules()
+    vi.doMock('node:fs/promises', () => ({
+      readFile: vi.fn().mockRejectedValue({ code: 'ENOENT' }),
+      writeFile,
+      mkdir,
+    }))
+
+    const { ensureConfig } = await import('../config.js')
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    const result = await ensureConfig()
+
+    expect(result).toBe('created')
+    expect(mkdir).toHaveBeenCalledOnce()
+    expect(writeFile).toHaveBeenCalledOnce()
+    expect(consoleSpy).toHaveBeenCalled()
+  })
+
+  it('throws on non-ENOENT errors like EACCES', async () => {
+    vi.resetModules()
+    vi.doMock('node:fs/promises', () => ({
+      readFile: vi.fn().mockRejectedValue({ code: 'EACCES', message: 'Permission denied' }),
+      writeFile: vi.fn(),
+      mkdir: vi.fn(),
+    }))
+
+    const { ensureConfig } = await import('../config.js')
+
+    await expect(ensureConfig()).rejects.toThrow()
+  })
+})

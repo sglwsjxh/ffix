@@ -23,6 +23,8 @@ export async function ensureConfig(): Promise<'ready' | 'created'> {
     await readFile(CONFIG_PATH, 'utf-8')
     return 'ready'
   } catch (err) {
+    const nodeErr = err as NodeJS.ErrnoException
+    if (nodeErr.code !== 'ENOENT') throw err
     await mkdir(CONFIG_DIR, { recursive: true })
     await writeFile(CONFIG_PATH, JSON.stringify(DEFAULT_USER_CONFIG, null, 4), 'utf-8')
     console.log(`首次使用，请配置 API 信息：${CONFIG_PATH}`)

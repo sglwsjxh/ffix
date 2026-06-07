@@ -14,8 +14,8 @@ export interface FixContext {
   exitCode: number
   errorOutput: string
   cwd: string
-  shell: 'powershell-7'
-  os: 'win32'
+  shell: 'powershell-7' | 'zsh'
+  os: 'win32' | 'darwin'
   timestamp: string
 }
 
