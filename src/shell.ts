@@ -1,7 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 
 export function getProfilePath(): string {
   try {
@@ -20,6 +21,11 @@ export function getProfilePath(): string {
   }
 }
 
+export function getZshProfilePath(): string {
+  const zdotdir = process.env.ZDOTDIR
+  return join(zdotdir || homedir(), '.zshrc')
+}
+
 function openingMarker(): string {
   return '# >>> fuck init >>>'
 }
@@ -28,10 +34,24 @@ function closingMarker(): string {
   return '# <<< fuck init <<<'
 }
 
+function zshOpeningMarker(): string {
+  return '# >>> ffix init >>>'
+}
+
+function zshClosingMarker(): string {
+  return '# <<< ffix init <<<'
+}
+
 function cliPathValue(cliPath?: string): string {
   return cliPath
     ? `$Fuck_NodeCli = "${cliPath}"`
     : `$Fuck_NodeCli = "$(npm root -g)\\@sglwsjxh\\ffix\\dist\\main.js"`
+}
+
+function zshCliPathValue(cliPath?: string): string {
+  return cliPath
+    ? `FFIX_NODE_CLI="${cliPath}"`
+    : 'FFIX_NODE_CLI="$(npm root -g)/@sglwsjxh/ffix/dist/main.js"'
 }
 
 function cliPathSection(cliPath?: string): string {
@@ -113,6 +133,45 @@ function fuck {
 }`
 }
 
+function zshCliPathSection(cliPath?: string): string {
+  return `# CLI 入口路径
+${zshCliPathValue(cliPath)}`
+}
+
+function zshContextPathSection(): string {
+  return `# 会话隔离的上下文文件路径（B2 会填充写入逻辑）
+: \${FFIX_CTX_PATH:="\${TMPDIR:-/tmp}/ffix_ctx_$$.json"}`
+}
+
+function zshHooksSection(): string {
+  return `ffix_preexec() {
+    # B2 will capture the command before execution here.
+}
+
+ffix_precmd() {
+    # B2 will write context JSON here; for v1, errorOutput is ''.
+}
+
+autoload -Uz add-zsh-hook && add-zsh-hook preexec ffix_preexec && add-zsh-hook precmd ffix_precmd`
+}
+
+function zshFuckCommandSection(): string {
+  return `fuck() {
+    local ctxPath="$FFIX_CTX_PATH"
+    if [[ ! -f "$ctxPath" ]]; then
+        echo "没有找到上一条命令的上下文"
+        return
+    fi
+
+    local suggestion
+    suggestion=$(node "$FFIX_NODE_CLI" --context-file "$ctxPath" --confirm)
+
+    if [[ -n "$suggestion" ]]; then
+        eval "$suggestion"
+    fi
+}`
+}
+
 /**
  * 生成要注入到 $PROFILE 的 PowerShell 脚本
  * 内容包含：
@@ -133,69 +192,75 @@ export function generateProfileScript(cliPath?: string): string {
   ].join('\n\n')
 }
 
-/**
- * 将 fuck 注入到当前用户的 $PROFILE 中
- * 先备份原文件，再追加注入脚本
- * 如果已经注入过则跳过
- */
-export async function install(): Promise<void> {
-  const profilePath = getProfilePath()
+export function generateZshProfileScript(cliPath?: string): string {
+  return [
+    zshOpeningMarker(),
+    zshCliPathSection(cliPath),
+    zshContextPathSection(),
+    zshHooksSection(),
+    zshFuckCommandSection(),
+    zshClosingMarker(),
+  ].join('\n\n')
+}
 
+async function appendProfileBlock(
+  profilePath: string,
+  startTag: string,
+  script: string,
+  alreadyInstalledMessage: string,
+  installedMessage: string,
+): Promise<void> {
   await mkdir(dirname(profilePath), { recursive: true })
 
   let content = ''
   try {
     content = await readFile(profilePath, 'utf-8')
   } catch (err) {
-    /* first install: $PROFILE may not exist yet, that's OK */
+    /* first install: profile may not exist yet, that's OK */
   }
 
-  if (content.includes('# >>> fuck init >>>')) {
-    console.log('fuck 已经安装到 $PROFILE，跳过')
+  if (content.includes(startTag)) {
+    console.log(alreadyInstalledMessage)
     return
   }
 
   await writeFile(profilePath + '.bak', content, 'utf-8')
 
-  const cliPath = fileURLToPath(import.meta.url)
-  const script = generateProfileScript(cliPath)
   const separator = content ? '\n' : ''
   await writeFile(profilePath, content + separator + script, 'utf-8')
 
-  console.log(`已安装到 ${profilePath}`)
+  console.log(installedMessage)
 }
 
-/**
- * 从 $PROFILE 中卸载 fuck 注入内容
- * 只删除标记块之间的内容，不影响用户其他配置
- */
-export async function uninstall(): Promise<void> {
-  const profilePath = getProfilePath()
-
+async function removeProfileBlock(
+  profilePath: string,
+  startTag: string,
+  endTag: string,
+  missingProfileMessage: string,
+  missingBlockMessage: string,
+  incompleteBlockMessage: string,
+  uninstalledMessage: string,
+): Promise<void> {
   let content: string
   try {
     content = await readFile(profilePath, 'utf-8')
   } catch (err) {
-    console.log('没有找到 $PROFILE')
+    console.log(missingProfileMessage)
     return
   }
 
-  const startTag = '# >>> fuck init >>>'
-  const endTag = '# <<< fuck init <<<'
-
   const startIdx = content.indexOf(startTag)
   if (startIdx === -1) {
-    console.log('没有找到 fuck 注入内容')
+    console.log(missingBlockMessage)
     return
   }
 
   const endIdx = content.indexOf(endTag, startIdx)
   if (endIdx === -1) {
-    console.log('错误：注入标记不完整，请手动检查 $PROFILE')
+    console.log(incompleteBlockMessage)
     return
   }
 
-  // 提取标记块前后的内容，合并回文件
   const before = content.substring(0, startIdx)
   const after = content.substring(endIdx + endTag.length)
   const trimmed = after.startsWith('\r\n')
@@ -205,5 +270,85 @@ export async function uninstall(): Promise<void> {
       : after
 
   await writeFile(profilePath, before + trimmed, 'utf-8')
-  console.log('已从 $PROFILE 卸载')
+  console.log(uninstalledMessage)
+}
+
+/**
+ * 将 fuck 注入到当前用户的 $PROFILE 中
+ * 先备份原文件，再追加注入脚本
+ * 如果已经注入过则跳过
+ */
+export async function install(): Promise<void> {
+  if (process.platform === 'darwin') {
+    await installZsh()
+  } else {
+    await installPowerShell()
+  }
+}
+
+export async function installPowerShell(): Promise<void> {
+  const profilePath = getProfilePath()
+  const cliPath = fileURLToPath(import.meta.url)
+  const script = generateProfileScript(cliPath)
+  await appendProfileBlock(
+    profilePath,
+    openingMarker(),
+    script,
+    'fuck 已经安装到 $PROFILE，跳过',
+    `已安装到 ${profilePath}`,
+  )
+}
+
+export async function installZsh(): Promise<void> {
+  const profilePath = getZshProfilePath()
+  const cliPath = fileURLToPath(import.meta.url)
+  const script = generateZshProfileScript(cliPath)
+  await appendProfileBlock(
+    profilePath,
+    zshOpeningMarker(),
+    script,
+    'ffix 已经安装到 .zshrc，跳过',
+    `已安装到 ${profilePath}`,
+  )
+}
+
+/**
+ * 从 $PROFILE 中卸载 fuck 注入内容
+ * 只删除标记块之间的内容，不影响用户其他配置
+ */
+export async function uninstall(): Promise<void> {
+  if (process.platform === 'darwin') {
+    await uninstallZsh()
+  } else {
+    await uninstallPowerShell()
+  }
+}
+
+export async function uninstallPowerShell(): Promise<void> {
+  const profilePath = getProfilePath()
+
+  const startTag = '# >>> fuck init >>>'
+  const endTag = '# <<< fuck init <<<'
+  await removeProfileBlock(
+    profilePath,
+    startTag,
+    endTag,
+    '没有找到 $PROFILE',
+    '没有找到 fuck 注入内容',
+    '错误：注入标记不完整，请手动检查 $PROFILE',
+    '已从 $PROFILE 卸载',
+  )
+}
+
+export async function uninstallZsh(): Promise<void> {
+  const profilePath = getZshProfilePath()
+  await removeProfileBlock(
+    profilePath,
+    zshOpeningMarker(),
+    zshClosingMarker(),
+    '没有找到 .zshrc',
+    '没有找到 ffix 注入内容',
+    '错误：注入标记不完整，请手动检查 .zshrc',
+    '已从 .zshrc 卸载',
+  )
 }

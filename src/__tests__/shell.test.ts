@@ -1,11 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 vi.mock('node:child_process')
 vi.mock('node:fs/promises')
 
-import { generateProfileScript, getProfilePath, install } from '../shell.js'
+import {
+  generateProfileScript,
+  generateZshProfileScript,
+  getProfilePath,
+  getZshProfilePath,
+  install,
+  uninstall,
+} from '../shell.js'
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+
+const originalPlatform = process.platform
+
+function mockPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true })
+}
+
+afterEach(() => {
+  mockPlatform(originalPlatform)
+  vi.unstubAllEnvs()
+  vi.clearAllMocks()
+})
 
 describe('generateProfileScript()', () => {
   it('matches $Error[0] only for the current command via InvocationInfo.Line', () => {
@@ -42,6 +61,29 @@ describe('generateProfileScript()', () => {
   })
 })
 
+describe('generateZshProfileScript()', () => {
+  it('generates a zsh marker block with hooks and context-file transport', () => {
+    const script = generateZshProfileScript('/path/to/dist/main.js')
+
+    expect(script).toContain('# >>> ffix init >>>')
+    expect(script).toContain('# <<< ffix init <<<')
+    expect(script).toContain('FFIX_NODE_CLI="/path/to/dist/main.js"')
+    expect(script).toContain(': ${FFIX_CTX_PATH:="${TMPDIR:-/tmp}/ffix_ctx_$$.json"}')
+    expect(script).toContain('ffix_preexec()')
+    expect(script).toContain('ffix_precmd()')
+    expect(script).toContain('errorOutput is \'\'')
+    expect(script).toContain('autoload -Uz add-zsh-hook && add-zsh-hook preexec ffix_preexec && add-zsh-hook precmd ffix_precmd')
+    expect(script).toContain('node "$FFIX_NODE_CLI" --context-file "$ctxPath" --confirm')
+    expect(script).toContain('eval "$suggestion"')
+  })
+
+  it('uses npm root -g fallback when cliPath is not provided', () => {
+    const script = generateZshProfileScript()
+
+    expect(script).toContain('FFIX_NODE_CLI="$(npm root -g)/@sglwsjxh/ffix/dist/main.js"')
+  })
+})
+
 describe('getProfilePath()', () => {
   const mockProfilePath = 'C:\\Users\\test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'
 
@@ -68,6 +110,20 @@ describe('getProfilePath()', () => {
   })
 })
 
+describe('getZshProfilePath()', () => {
+  it('uses ZDOTDIR when it is set', () => {
+    vi.stubEnv('ZDOTDIR', 'C:\\custom\\zdotdir')
+
+    expect(getZshProfilePath()).toBe('C:\\custom\\zdotdir\\.zshrc')
+  })
+
+  it('falls back to home .zshrc when ZDOTDIR is not set', () => {
+    vi.stubEnv('ZDOTDIR', '')
+
+    expect(getZshProfilePath()).toMatch(/[\\/]\.zshrc$/)
+  })
+})
+
 describe('install()', () => {
   const mockProfilePath = 'C:\\Users\\test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'
   const mockParentDir = 'C:\\Users\\test\\Documents\\PowerShell'
@@ -81,9 +137,46 @@ describe('install()', () => {
   })
 
   it('creates the parent directory of the resolved $PROFILE path', async () => {
+    mockPlatform('win32')
+
     await install()
 
     expect(mkdir).toHaveBeenCalledWith(mockParentDir, { recursive: true })
     expect(mkdir).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes darwin installs to .zshrc without resolving PowerShell $PROFILE', async () => {
+    mockPlatform('darwin')
+    vi.stubEnv('ZDOTDIR', 'C:\\Users\\test\\.config\\zsh')
+
+    await install()
+
+    expect(execFileSync).not.toHaveBeenCalled()
+    expect(mkdir).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh', { recursive: true })
+    expect(writeFile).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh\\.zshrc.bak', '', 'utf-8')
+    expect(writeFile).toHaveBeenLastCalledWith(
+      'C:\\Users\\test\\.config\\zsh\\.zshrc',
+      expect.stringContaining('# >>> ffix init >>>'),
+      'utf-8',
+    )
+  })
+})
+
+describe('uninstall()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(readFile).mockResolvedValue('before\n# >>> ffix init >>>\nblock\n# <<< ffix init <<<\nafter')
+    vi.mocked(writeFile).mockResolvedValue(undefined)
+  })
+
+  it('routes darwin uninstalls to the zsh marker block', async () => {
+    mockPlatform('darwin')
+    vi.stubEnv('ZDOTDIR', 'C:\\Users\\test\\.config\\zsh')
+
+    await uninstall()
+
+    expect(execFileSync).not.toHaveBeenCalled()
+    expect(readFile).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh\\.zshrc', 'utf-8')
+    expect(writeFile).toHaveBeenCalledWith('C:\\Users\\test\\.config\\zsh\\.zshrc', 'before\nafter', 'utf-8')
   })
 })
