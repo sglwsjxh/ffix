@@ -38,8 +38,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
     parsed = JSON.parse(raw) as Partial<UserConfig>
   } catch {
     console.error(`配置文件 ${CONFIG_PATH} 格式错误，请检查 JSON 语法后重新运行`)
-    process.exit(1)
-    return DEFAULT_USER_CONFIG
+    throw new Error('配置文件格式错误')
   }
 
   const config: UserConfig = {
@@ -51,8 +50,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
   const validationErrors = validateUserConfig(config)
   if (validationErrors.length > 0) {
     for (const error of validationErrors) console.error(error)
-    process.exit(1)
-    return config
+    throw new Error('配置文件验证失败')
   }
 
   return config

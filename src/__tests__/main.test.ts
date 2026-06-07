@@ -166,99 +166,88 @@ describe('parseArgs()', () => {
   it('rejects unknown flag', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--unknown'])
+    expect(() => parseArgs(['--unknown'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('unknown flag'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects unknown positional argument', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['nope'])
+    expect(() => parseArgs(['nope'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('nope'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects missing value after --cmd', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--cmd'])
+    expect(() => parseArgs(['--cmd'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--cmd'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects empty string for --cmd', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--cmd', ''])
+    expect(() => parseArgs(['--cmd', ''])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--cmd'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects missing value after --exit-code', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--exit-code'])
+    expect(() => parseArgs(['--exit-code'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--exit-code'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects non-numeric --exit-code', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--exit-code', 'abc'])
+    expect(() => parseArgs(['--exit-code', 'abc'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('finite integer'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects non-integer --exit-code', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--exit-code', '3.14'])
+    expect(() => parseArgs(['--exit-code', '3.14'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('finite integer'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects NaN --exit-code', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--exit-code', 'NaN'])
+    expect(() => parseArgs(['--exit-code', 'NaN'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('finite integer'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects Infinity --exit-code', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--exit-code', 'Infinity'])
+    expect(() => parseArgs(['--exit-code', 'Infinity'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('finite integer'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects missing value after --error-output', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--error-output'])
+    expect(() => parseArgs(['--error-output'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--error-output'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
   it('rejects missing value after --cwd', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { parseArgs } = await import('../main.js')
-    parseArgs(['--cwd'])
+    expect(() => parseArgs(['--cwd'])).toThrow()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--cwd'))
-    expect(process.exit).toHaveBeenCalledWith(1)
     consoleSpy.mockRestore()
   })
 
@@ -270,7 +259,7 @@ describe('parseArgs()', () => {
 })
 
 describe('main()', () => {
-  it('creates missing config and exits before reading context or calling LLM', async () => {
+  it('creates missing config and returns 0 before reading context or calling LLM', async () => {
     const origArgv = process.argv
     const readFile = vi.fn().mockRejectedValue(new Error('config missing'))
     const writeFile = vi.fn().mockResolvedValue(undefined)
@@ -288,12 +277,12 @@ describe('main()', () => {
       process.argv = ['node', 'ffix']
 
       const mod = await import('../main.js')
-      await mod.main()
+      const exitCode = await mod.main()
 
+      expect(exitCode).toBe(0)
       expect(readFile).toHaveBeenCalled()
       expect(mkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true })
       expect(writeFile).toHaveBeenCalled()
-      expect(process.exit).toHaveBeenCalledWith(0)
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('请编辑 config/config.json 配置文件后重新运行'))
       expect(readContext).not.toHaveBeenCalled()
       expect(getFixSuggestion).not.toHaveBeenCalled()

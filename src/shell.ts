@@ -76,7 +76,7 @@ function Write-FuckContext {
             cwd         = (Get-Location).Path
             shell       = 'powershell-7'
             os          = 'win32'
-            timestamp   = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffZ')
+            timestamp   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         }
         $ctx | ConvertTo-Json -Compress | Out-File -FilePath "$env:TEMP\\fuck_ctx_$($Host.InstanceId).json" -Encoding utf8
     }

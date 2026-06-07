@@ -79,7 +79,7 @@ export function parseArgs(argv: string[]): CliArgs {
         const val = argv[++i]
         if (val === undefined || val === '') {
           console.error('error: --cmd requires a non-empty value')
-          process.exit(1)
+          throw new Error('parse error')
         }
         args.cmd = val
         continue
@@ -89,12 +89,12 @@ export function parseArgs(argv: string[]): CliArgs {
         const val = argv[++i]
         if (val === undefined) {
           console.error('error: --exit-code requires a numeric value')
-          process.exit(1)
+          throw new Error('parse error')
         }
         const num = Number(val)
         if (!Number.isFinite(num) || !Number.isInteger(num)) {
           console.error(`error: --exit-code must be a finite integer, got "${val}"`)
-          process.exit(1)
+          throw new Error('parse error')
         }
         args.exitCode = num
         continue
@@ -104,7 +104,7 @@ export function parseArgs(argv: string[]): CliArgs {
         const val = argv[++i]
         if (val === undefined) {
           console.error('error: --error-output requires a value')
-          process.exit(1)
+          throw new Error('parse error')
         }
         args.errorOutput = val
         continue
@@ -114,7 +114,7 @@ export function parseArgs(argv: string[]): CliArgs {
         const val = argv[++i]
         if (val === undefined) {
           console.error('error: --cwd requires a value')
-          process.exit(1)
+          throw new Error('parse error')
         }
         args.cwd = val
         continue
@@ -131,11 +131,11 @@ export function parseArgs(argv: string[]): CliArgs {
       }
 
       console.error(`error: unknown flag ${arg}`)
-      process.exit(1)
+      throw new Error('parse error')
     }
 
     console.error(`error: unknown argument "${arg}"`)
-    process.exit(1)
+    throw new Error('parse error')
   }
 
   return args
@@ -153,24 +153,28 @@ function buildContextFromArgs(args: CliArgs): FixContext {
   }
 }
 
-export async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2))
+export async function main(): Promise<number> {
+  let args: CliArgs
+  try {
+    args = parseArgs(process.argv.slice(2))
+  } catch {
+    return 1
+  }
 
   if (args.subcommand === 'install') {
     await install()
-    return
+    return 0
   }
 
   if (args.subcommand === 'uninstall') {
     await uninstall()
-    return
+    return 0
   }
 
   const configStatus = await ensureConfig()
   if (configStatus === 'created') {
     console.log('请编辑 config/config.json 配置文件后重新运行')
-    process.exit(0)
-    return
+    return 0
   }
 
   let context: FixContext | null = null
@@ -183,14 +187,14 @@ export async function main(): Promise<void> {
 
   if (!context) {
     console.error('没有找到上一条命令的上下文')
-    process.exit(1)
+    return 1
   }
 
   const suggestion = await getFixSuggestion(context)
 
   if (!suggestion || !suggestion.command) {
     console.error('没能找到修复方案')
-    process.exit(1)
+    return 1
   }
 
   if (args.confirm) {
@@ -203,12 +207,12 @@ export async function main(): Promise<void> {
       if (key === '\r' || key === '\n') {
         process.stderr.write(`\n\n\x1b[32m> ${suggestion.command}\x1b[0m\n`)
         process.stdout.write(suggestion.command)
-        process.exit(0)
+        return 0
       }
       process.stderr.write('\n\n已取消\n')
-      process.exit(1)
+      return 1
     } catch {
-      process.exit(1)
+      return 1
     }
   }
 
@@ -221,11 +225,11 @@ export async function main(): Promise<void> {
     console.log(suggestion.command)
   }
 
-  process.exit(0)
+  return 0
 }
 
 if (!process.env.VITEST) {
-  main().catch((err: unknown) => {
+  main().then((code) => process.exit(code)).catch((err: unknown) => {
     console.error(err)
     process.exit(1)
   })

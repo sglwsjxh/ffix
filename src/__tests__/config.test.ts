@@ -35,77 +35,68 @@ describe('validateUserConfig()', () => {
 })
 
 describe('loadUserConfig()', () => {
-  it('prints apiKey validation error and exits without leaking apiKey value', async () => {
+  it('prints apiKey validation error and throws without leaking apiKey value', async () => {
     const { loadUserConfig } = await importConfigWithRaw(JSON.stringify({
       baseUrl: 'https://api.example.com',
       model: 'gpt-test',
     }))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await loadUserConfig()
+    await expect(loadUserConfig()).rejects.toThrow()
 
     const output = errorSpy.mock.calls.flat().join('\n')
     expect(output).toContain('apiKey')
     expect(output).not.toContain('sk-test')
-    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('prints model validation error and exits for an empty model', async () => {
+  it('prints model validation error and throws for an empty model', async () => {
     const { loadUserConfig } = await importConfigWithRaw(JSON.stringify({
       baseUrl: 'https://api.example.com',
       apiKey: 'sk-test',
       model: '   ',
     }))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await loadUserConfig()
+    await expect(loadUserConfig()).rejects.toThrow()
 
     const output = errorSpy.mock.calls.flat().join('\n')
     expect(output).toContain('model')
-    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('prints baseUrl validation error and exits for an invalid URL', async () => {
+  it('prints baseUrl validation error and throws for an invalid URL', async () => {
     const { loadUserConfig } = await importConfigWithRaw(JSON.stringify({
       baseUrl: 'not-a-url',
       apiKey: 'sk-test',
       model: 'gpt-test',
     }))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await loadUserConfig()
+    await expect(loadUserConfig()).rejects.toThrow()
 
     const output = errorSpy.mock.calls.flat().join('\n')
     expect(output).toContain('baseUrl')
     expect(output).toContain('绝对 URL')
-    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('prints one validation error per missing field and exits', async () => {
+  it('prints one validation error per missing field and throws', async () => {
     const { loadUserConfig } = await importConfigWithRaw(JSON.stringify({}))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await loadUserConfig()
+    await expect(loadUserConfig()).rejects.toThrow()
 
     const output = errorSpy.mock.calls.flat().join('\n')
     expect(errorSpy).toHaveBeenCalledTimes(3)
     expect(output).toContain('baseUrl')
     expect(output).toContain('apiKey')
     expect(output).toContain('model')
-    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('returns merged config and does not exit for a valid config', async () => {
+  it('returns merged config and does not throw for a valid config', async () => {
     const { loadUserConfig } = await importConfigWithRaw(JSON.stringify({
       baseUrl: 'https://api.example.com',
       apiKey: 'sk-test',
       model: 'gpt-test',
     }))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     const config = await loadUserConfig()
@@ -116,19 +107,16 @@ describe('loadUserConfig()', () => {
       model: 'gpt-test',
     })
     expect(errorSpy).not.toHaveBeenCalled()
-    expect(exitSpy).not.toHaveBeenCalled()
   })
 
-  it('prints a friendly parse error and exits for corrupted JSON', async () => {
+  it('prints a friendly parse error and throws for corrupted JSON', async () => {
     const { loadUserConfig } = await importConfigWithRaw('{not valid json')
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    await loadUserConfig()
+    await expect(loadUserConfig()).rejects.toThrow()
 
     const output = errorSpy.mock.calls.flat().join('\n')
     expect(output).toContain('配置文件')
     expect(output).toContain('JSON')
-    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 })
