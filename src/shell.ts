@@ -99,7 +99,7 @@ function captureBlock(): string {
     if (-not $lastCmd) { return }
 
     if (-not $lastSuccess) {
-        $effectiveExitCode = if ($exitCode -ne 0) { $exitCode } else { 1 }
+        $effectiveExitCode = if ($exitCode) { $exitCode } else { 1 }
         $errorMsg = if ($Error[0] -and $Error[0].InvocationInfo.Line -eq $lastCmd) { $Error[0].Exception.Message } else { '' }
         $ctx = @{
             lastCommand = $lastCmd
